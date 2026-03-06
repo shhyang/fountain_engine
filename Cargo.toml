@@ -1,11 +1,12 @@
 [package]
 name = "fountain_engine"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 authors = ["Shenghao Yang"]
 license = "AGPL-3.0-only"
 description = "Core algorithms for fountain code encoding and decoding"
 repository = "https://github.com/shhyang/fountain_engine"
+documentation = "https://shhyang.github.io/fountain_docs/"
 keywords = ["fountain-code", "erasure-coding", "rateless", "LT-code"]
 categories = ["algorithms", "encoding"]
 readme = "README.md"
