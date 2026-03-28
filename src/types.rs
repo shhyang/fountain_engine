@@ -4,8 +4,42 @@
 /// Maximum number of inactive vectors allowed in the system.
 pub const MAX_INACTIVE_NUM: usize = 100; // Adjust this value as needed
 
-/// Type alias for degree set generator function (symbol index -> (active indices, inactive indices)).
-pub type DegreeSetFn = Box<dyn FnMut(usize) -> (Vec<usize>, Vec<usize>)>;
+/// Type alias for degree set generator function (symbol index -> active and inactive indices).
+pub type DegreeSetFn = Box<dyn FnMut(usize) -> Vec<usize>>;
+
+/// A struct for decoding configuration.
+#[derive(Clone, Debug)]
+pub struct DecodingConfig {
+    pub max_inactive_num: usize,
+    pub num_padding: usize,
+    pub pre_inactivation: PreInactivation,
+    pub inac_strategy: InactivationStrategy,
+    pub subs_method: SubstitutionMethod,
+}
+
+impl Default for DecodingConfig {
+    fn default() -> Self {
+        Self {
+            max_inactive_num: 0,
+            num_padding: 0,
+            pre_inactivation: PreInactivation::NoPre,
+            inac_strategy: InactivationStrategy::ByIndex,
+            subs_method: SubstitutionMethod::Direct,
+        }
+    }
+}
+
+impl DecodingConfig {
+    /// Set the pre-inactivation flag to true.
+    pub fn with_pre_inact(mut self) -> Self {
+        self.pre_inactivation = PreInactivation::YesPre;
+        self
+    }
+    pub fn with_max_inact_num(mut self, max_inactive_num: usize) -> Self {
+        self.max_inactive_num = max_inactive_num;
+        self
+    }
+}
 
 /// Parameters defining the structure of a fountain code.
 ///
@@ -23,27 +57,35 @@ pub struct CodeParams {
     pub l: usize,
     /// Number of HDPC (High-Density Parity-Check) constraint vectors.
     pub h: usize,
+    // Number of pre-inactive source vectors.
+    //pub i: usize,
+    // Number of padding source vectors.
+    //pub p: usize,
 }
 
 impl CodeParams {
-    /// Creates new code parameters. `b` is computed as `k - a`.
+    /// Creates new code parameters with pre-inactivation.
+    /// - `b` is computed as `k - a`.
+    /// - `i` is computed as `b + h`.
     pub fn new(k: usize, a: usize, l: usize, h: usize) -> Self {
         let b = k - a;
         Self { k, a, b, l, h }
     }
-
-    //pub fn max_inactive_num(&self) -> usize {
-    //    (self.b + self.h + 1).min(MAX_INACTIVE_NUM) // no dynamic inactivation
-    //}
 
     /// Returns the number of active variable vectors (`a + l`).
     pub fn num_active(&self) -> usize {
         self.a + self.l
     }
 
-    /// Returns the number of inactive variable vectors (`b + h`).
-    pub fn num_inactive(&self) -> usize {
+    /// Returns the number of pre-inactive variable vectors (`i`).
+    pub fn num_pre_inactive(&self) -> usize {
         self.b + self.h
+    }
+
+    /// Same as [`num_pre_inactive`](Self::num_pre_inactive); kept for call sites that use this name.
+    #[inline]
+    pub fn num_inactive(&self) -> usize {
+        self.num_pre_inactive()
     }
 
     /// Returns the combined count of message and LDPC vectors (`k + l`).
@@ -64,7 +106,6 @@ pub enum CodeType {
     Ordinary,
     /// Systematic encoding and decoding, where source symbols appear unmodified in the output.
     Systematic,
-    //Block, // block code encoding and decoding
 }
 
 /// Identifies which solver configuration to use based on code type and direction.
@@ -78,8 +119,6 @@ pub enum SolverType {
     SysEnc,
     /// Systematic decoding solver.
     SysDec,
-    //BlockEnc, // for block code encoding
-    //BlockDec, // for block code decoding
 }
 
 /// Strategy for selecting which variable to inactivate during BP decoding.
@@ -99,11 +138,20 @@ pub enum InactivationStrategy {
 
 /// Method used for back-substitution after Gaussian elimination.
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub enum BackSubstitutionMethod {
+pub enum SubstitutionMethod {
     /// Solve directly using the GE-reduced matrix.
     Direct,
     /// Solve using the original constraint matrix.
     Original,
+}
+
+/// Type of pre-inactivation for decoding.
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum PreInactivation {
+    /// No pre-inactivation.
+    NoPre,
+    /// Pre-inactivate HDPC variable vectors.
+    YesPre,
 }
 
 /// Result of the decoding process.
@@ -141,10 +189,6 @@ pub enum Operation {
         /// ID of the vector to multiply.
         id: usize,
     },
-    //DivideScalar {
-    //    scalar: u8,
-    //    id: usize,
-    //},
     /// XOR (add in GF(2)/GF(256)) multiple source vectors into a target vector.
     AddToVector {
         /// IDs of source vectors to XOR into the target.

@@ -3,8 +3,10 @@
 
 use super::{HDPC, LDPC};
 use crate::types::{
-    BackSubstitutionMethod, CodeParams, CodeType, DegreeSetFn, InactivationStrategy,
+    SubstitutionMethod, CodeParams, CodeType, DegreeSetFn, InactivationStrategy, DecodingConfig, PreInactivation,
 };
+
+pub type PrecodePair = (Option<Box<dyn HDPC>>, Option<Box<dyn LDPC>>);
 
 /// Trait for code configuration
 pub trait CodeScheme {
@@ -18,21 +20,21 @@ pub trait CodeScheme {
     fn create_degree_set_fn(&self) -> DegreeSetFn;
 
     /// Create precode components
-    #[allow(clippy::type_complexity)]
-    fn create_precode(&self) -> (Option<Box<dyn HDPC>>, Option<Box<dyn LDPC>>);
+    fn create_precode(&self) -> PrecodePair;
 
     /// Maximum number of inactivations
     fn max_inactive_num(&self) -> usize{
         self.get_params().h + self.get_params().b 
     }
 
-    /// Inactivation strategy
-    fn inac_strategy(&self) -> InactivationStrategy {
-        InactivationStrategy::ByIndex
-    }
-
-    /// Back substitution method
-    fn back_substitution_method(&self) -> BackSubstitutionMethod {
-        BackSubstitutionMethod::Direct
+    /// Decoding configuration
+    fn decoding_config(&self) -> DecodingConfig {
+        DecodingConfig {
+            max_inactive_num: self.max_inactive_num(),
+            num_padding: 0,
+            pre_inactivation: PreInactivation::YesPre,
+            inac_strategy: InactivationStrategy::ByIndex,
+            subs_method: SubstitutionMethod::Direct,
+        }
     }
 }

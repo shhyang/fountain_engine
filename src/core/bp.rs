@@ -303,18 +303,10 @@ impl BPDecoder {
         coded_id: usize,
         data_id: usize,
     ) -> usize {
-        let (active_indices, inactive_indices) = (self.gen_degree_set)(coded_id);
+        let degree_set = (self.gen_degree_set)(coded_id);
         let check_id = self.add_check_node(data_id);
 
-        // add edges between inactive variable nodes and the check node
-        //dbg!("add_coded_vector", &coded_id, &data_id, &active_indices, &inactive_indices);
-        //dbg!("orignal value of coded vector", manager.get_vector(data_id));
-        for &var_id in &inactive_indices {
-            self.add_edge_inactive(var_id + self.params.num_active(), check_id);
-        }
-
-        // add edges between active variable nodes and the check node
-        for &var_id in &active_indices {
+        for &var_id in &degree_set {
             match self.variable_states[var_id] {
                 VarState::Active => self.add_edge_active(var_id, check_id),
                 VarState::Inactive { seq: _ } => self.add_edge_inactive(var_id, check_id),
@@ -322,9 +314,7 @@ impl BPDecoder {
                     check_id: decoded_by,
                 } => {
                     let var_data_id = manager.data_id_of_variable_vector(var_id);
-                    // perform back substitution
                     manager.add_to_vector(&[var_data_id], data_id);
-                    // xor inactive variables
                     self.xor_inactive_vars(decoded_by, check_id);
                 }
             }
