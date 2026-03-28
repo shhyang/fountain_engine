@@ -8,7 +8,7 @@ description = "Core algorithms for fountain code encoding and decoding"
 repository = "https://github.com/shhyang/fountain_engine"
 documentation = "https://shhyang.github.io/fountain_docs/"
 keywords = ["fountain-code", "erasure-coding", "rateless", "LT-code"]
-categories = ["algorithms", "encoding", "networking"]
+categories = ["algorithms", "encoding", "network-programming"]
 readme = "README.md"
 
 [dependencies]
