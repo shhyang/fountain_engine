@@ -3,7 +3,7 @@
 
 use super::{HDPC, LDPC};
 use crate::types::{
-    SubstitutionMethod, CodeParams, CodeType, DegreeSetFn, InactivationStrategy, DecodingConfig, PreInactivation,
+    CodeParams, CodeType, DegreeSetFn, DecodingConfig,
 };
 
 pub type PrecodePair = (Option<Box<dyn HDPC>>, Option<Box<dyn LDPC>>);
@@ -23,18 +23,13 @@ pub trait CodeScheme {
     fn create_precode(&self) -> PrecodePair;
 
     /// Maximum number of inactivations
+    #[deprecated(since = "1.1.0", note = "use decoding_config instead")]
     fn max_inactive_num(&self) -> usize{
         self.get_params().h + self.get_params().b 
     }
 
     /// Decoding configuration
     fn decoding_config(&self) -> DecodingConfig {
-        DecodingConfig {
-            max_inactive_num: self.max_inactive_num(),
-            num_padding: 0,
-            pre_inactivation: PreInactivation::YesPre,
-            inac_strategy: InactivationStrategy::ByIndex,
-            subs_method: SubstitutionMethod::Direct,
-        }
+        DecodingConfig::default().with_max_inact_num(self.get_params().num_inactive())
     }
 }

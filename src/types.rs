@@ -57,13 +57,22 @@ pub struct CodeParams {
     pub l: usize,
     /// Number of HDPC (High-Density Parity-Check) constraint vectors.
     pub h: usize,
+    // Number of pre-inactive variable vectors.
+    pub i: usize,
 }
 
 impl CodeParams {
     /// Creates new code parameters. `b` is computed as `k - a`.
     pub fn new(k: usize, a: usize, l: usize, h: usize) -> Self {
         let b = k - a;
-        Self { k, a, b, l, h }
+        let i = b + h;
+        Self { k, a, b, l, h, i }
+    }
+
+    /// Creates new code parameters without pre-inactivation.
+    pub fn new_without_pre_inact(k: usize, a: usize, l: usize, h: usize) -> Self {
+        let b = k - a;
+        Self { k, a, b, l, h, i: 0 }
     }
 
     /// Returns the number of active variable vectors (`a + l`).
@@ -73,13 +82,12 @@ impl CodeParams {
 
     /// Returns the number of pre-inactive variable vectors (`i`).
     pub fn num_pre_inactive(&self) -> usize {
-        self.b + self.h
+        self.i
     }
 
     /// Same as [`num_pre_inactive`](Self::num_pre_inactive); kept for call sites that use this name.
-    #[inline]
     pub fn num_inactive(&self) -> usize {
-        self.num_pre_inactive()
+        self.b + self.h
     }
 
     /// Returns the combined count of message and LDPC vectors (`k + l`).

@@ -151,7 +151,7 @@ impl Solver {
         let params = custom.get_params();
         let gen_degree_set = custom.create_degree_set_fn();
         let (hdpc, ldpc) = custom.create_precode();
-        let max_inactive_num = custom.max_inactive_num();
+        let max_inactive_num = custom.decoding_config().max_inactive_num;
         let mut bp_decoder = BPDecoder::new(&params, gen_degree_set, max_inactive_num);
 
         if let Some(ldpc) = ldpc {
