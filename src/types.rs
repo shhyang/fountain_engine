@@ -4,7 +4,7 @@
 /// Maximum number of inactive vectors allowed in the system.
 pub const MAX_INACTIVE_NUM: usize = 100; // Adjust this value as needed
 
-/// Type alias for degree set generator function (symbol index -> active and inactive indices).
+/// Type alias for degree set generator function (symbol index -> combined variable indices).
 pub type DegreeSetFn = Box<dyn FnMut(usize) -> Vec<usize>>;
 
 /// A struct for decoding configuration.
@@ -57,16 +57,10 @@ pub struct CodeParams {
     pub l: usize,
     /// Number of HDPC (High-Density Parity-Check) constraint vectors.
     pub h: usize,
-    // Number of pre-inactive source vectors.
-    //pub i: usize,
-    // Number of padding source vectors.
-    //pub p: usize,
 }
 
 impl CodeParams {
-    /// Creates new code parameters with pre-inactivation.
-    /// - `b` is computed as `k - a`.
-    /// - `i` is computed as `b + h`.
+    /// Creates new code parameters. `b` is computed as `k - a`.
     pub fn new(k: usize, a: usize, l: usize, h: usize) -> Self {
         let b = k - a;
         Self { k, a, b, l, h }
