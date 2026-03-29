@@ -12,7 +12,6 @@ pub type DegreeSetFn = Box<dyn FnMut(usize) -> Vec<usize>>;
 pub struct DecodingConfig {
     pub max_inactive_num: usize,
     pub num_padding: usize,
-    pub pre_inactivation: PreInactivation,
     pub inac_strategy: InactivationStrategy,
     pub subs_method: SubstitutionMethod,
 }
@@ -22,7 +21,6 @@ impl Default for DecodingConfig {
         Self {
             max_inactive_num: 0,
             num_padding: 0,
-            pre_inactivation: PreInactivation::NoPre,
             inac_strategy: InactivationStrategy::ByIndex,
             subs_method: SubstitutionMethod::Direct,
         }
@@ -30,11 +28,6 @@ impl Default for DecodingConfig {
 }
 
 impl DecodingConfig {
-    /// Set the pre-inactivation flag to true.
-    pub fn with_pre_inact(mut self) -> Self {
-        self.pre_inactivation = PreInactivation::YesPre;
-        self
-    }
     pub fn with_max_inact_num(mut self, max_inactive_num: usize) -> Self {
         self.max_inactive_num = max_inactive_num;
         self
@@ -85,7 +78,7 @@ impl CodeParams {
         self.i
     }
 
-    /// Same as [`num_pre_inactive`](Self::num_pre_inactive); kept for call sites that use this name.
+    /// Returns the number of inactive variable vectors (`b + h`).
     pub fn num_inactive(&self) -> usize {
         self.b + self.h
     }
@@ -145,15 +138,6 @@ pub enum SubstitutionMethod {
     Direct,
     /// Solve using the original constraint matrix.
     Original,
-}
-
-/// Type of pre-inactivation for decoding.
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum PreInactivation {
-    /// No pre-inactivation.
-    NoPre,
-    /// Pre-inactivate HDPC variable vectors.
-    YesPre,
 }
 
 /// Result of the decoding process.
