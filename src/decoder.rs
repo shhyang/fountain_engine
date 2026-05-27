@@ -1,12 +1,11 @@
-// Copyright (c) 2025 Shenghao Yang. All rights reserved.
-// Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
+// Copyright (c) 2025 Shenghao Yang.
+// All rights reserved.
 
-use crate::core::Solver;
+use crate::core::solver::Solver;
 use crate::data_manager::DataManager;
 use crate::traits::{CodeScheme, DataOperator};
-use crate::types::{CodeParams, CodeType, DegreeSetFn, DecodeStatus, SolverType};
+use crate::types::{CodeParams, CodeType, DecodeStatus, DegreeSetFn, SolverType};
 
-/// Fountain code decoder using BP + inactivation + Gaussian elimination.
 pub struct Decoder {
     params: CodeParams,
     pub manager: DataManager,
@@ -55,10 +54,7 @@ impl Decoder {
 
     pub fn decode_status(&self) -> DecodeStatus {
         if let Some(received_msg_vectors) = self.received_msg_vectors.as_ref() {
-            let num_received = received_msg_vectors
-                .iter()
-                .filter(|&&id| id)
-                .count();
+            let num_received = received_msg_vectors.iter().filter(|&id| *id).count();
             if num_received == self.params.k {
                 return DecodeStatus::Decoded;
             }
@@ -83,10 +79,7 @@ impl Decoder {
                 self.manager.copy_to(data_id, coded_id);
                 // check the number of received message vectors
                 received_msg_vectors[coded_id] = true;
-                let num_received = received_msg_vectors
-                    .iter()
-                    .filter(|&&id| id)
-                    .count();
+                let num_received = received_msg_vectors.iter().filter(|&id| *id).count();
                 if num_received == self.params.k {
                     return DecodeStatus::Decoded;
                 }
@@ -105,7 +98,8 @@ impl Decoder {
             return self.solver.status;
         }
 
-        self.solver.add_coded_vector(&mut self.manager, coded_id, data_id);
+        self.solver
+            .add_coded_vector(&mut self.manager, coded_id, data_id);
 
         if self.solver.status == DecodeStatus::Decoded {
             if let Some(received_msg_vectors) = self.received_msg_vectors.as_mut() {
@@ -131,7 +125,10 @@ impl Decoder {
             } else {
                 // ordinary decoding
                 for i in 0..self.params.b {
-                    self.manager.move_to(self.manager.data_id_of_inactive_variable(i), i + self.params.a);
+                    self.manager.move_to(
+                        self.manager.data_id_of_inactive_variable(i),
+                        i + self.params.a,
+                    );
                 }
             }
         }

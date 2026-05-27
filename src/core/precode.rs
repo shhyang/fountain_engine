@@ -1,7 +1,6 @@
 // Copyright (c) 2025 Shenghao Yang. All rights reserved.
 // Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
 
-use crate::algebra::finite_field::GF256;
 use crate::algebra::linear_algebra::Matrix;
 use crate::data_manager::DataManager;
 use crate::traits::CodeScheme;
@@ -9,6 +8,7 @@ use crate::traits::HDPC;
 use crate::traits::LDPC;
 use crate::types::CodeParams;
 
+use crate::algebra::finite_field::GF2;
 /// *Precode Encoder*
 /// The precode encoder is used to encode the message vectors with a precode similar to that of RQ precoding.
 /// To use the encoder, a data manager is needed, which implements the `DataManager` trait.
@@ -24,17 +24,14 @@ pub fn precode_encode<T: CodeScheme>(manager: &mut DataManager, params: &CodePar
     // Calculate D * [B_a; L; B_b] where D is the HDPC matrix, B is message packets, L is LDPC packets
     if let Some(hdpc) = hdpc {
         //dbg!("hdpc encode");
+        // GF(256) HDPC: real `pp`; binary HDPC (e.g. R10): `GF2_FIELD_POLY` → LU over GF(2).
+        manager.config_finite_field(hdpc.gf_poly());
         let variable_ids_kl: Vec<usize> = manager.data_id_range_of_msg_ldpc_variable();
         let mut hdpc_constraint_data_ids = Vec::with_capacity(params.h);
         for _ in 0..params.h {
             hdpc_constraint_data_ids.push(manager.temp_data_id());
         }
-        hdpc.mul_data(
-            manager,
-            params,
-            &variable_ids_kl,
-            &hdpc_constraint_data_ids,
-        );
+        hdpc.mul_data(manager, params, &variable_ids_kl, &hdpc_constraint_data_ids);
 
         //for i in params.hdpc_range() {
         //     dbg!("mul_vector", manager.get_vector(i));
@@ -82,30 +79,27 @@ fn hdpc_solve(
     // todo: test the calculation of D_s S_h as [D_s D_b] [S_h // 0]
     let ldpc_adj_check_inactive = |row: usize| {
         //if row < params.l {
-            // keep only entries less than b
-            ldpc.inactive_row(row)
-                .iter()
-                .filter(|&id| *id >= params.b)
-                .map(|&id| id - params.b)
-                .collect::<Vec<_>>()
+        // keep only entries less than b
+        ldpc.inactive_row(row)
+            .iter()
+            .filter(|&id| *id >= params.b)
+            .map(|&id| id - params.b)
+            .collect::<Vec<_>>()
         //} else {
         //    vec![]
         //}
     };
 
-    let mut idssh = hdpc.mul_sparse_sh(
-        //&GF256::default(),
-        params,
-        //params.l + params.b,
-        //params.h,
-        &ldpc_adj_check_inactive,
-    );
+    let mut idssh = hdpc.mul_sparse_sh(manager.gf256(), params, &ldpc_adj_check_inactive);
     //dbg!("idssh", &idssh);
 
     for (i, row) in idssh.iter_mut().take(params.h).enumerate() {
         row[i] ^= 1;
     }
-    let (p, r) = Matrix::lu_decomp(&GF256::default(), &mut idssh);
+    let (p, r) = match manager.gf256() {
+        Some(gf) => Matrix::lu_decomp(gf, &mut idssh),
+        None => Matrix::lu_decomp(&GF2::new(), &mut idssh),
+    };
     //dbg!("p", &p);
     //dbg!("idssh", &idssh);
     if r < params.h {

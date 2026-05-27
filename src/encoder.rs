@@ -1,11 +1,11 @@
-// Copyright (c) 2025 Shenghao Yang. All rights reserved.
-// Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
+// Copyright (c) 2025 Shenghao Yang.
+// All rights reserved.
 
-use crate::core::{precode_encode, Solver};
 use crate::data_manager::DataManager;
 //use crate::types::Operation;
+use crate::core::{precode_encode, solver::Solver};
 use crate::traits::{CodeScheme, DataOperator};
-use crate::types::{CodeParams, CodeType, DegreeSetFn, DecodeStatus, SolverType};
+use crate::types::{CodeParams, CodeType, DecodeStatus, DegreeSetFn, SolverType};
 
 /// *Fountain Code Encoder*
 /// The encoder is used to encode the message vectors with optional precoding.
@@ -112,9 +112,15 @@ impl Encoder {
         }
 
         if coded_id < self.params.num_message_ldpc() {
-            return Some(self.manager.data_id_of_ldpc_variable(coded_id - self.params.k));
+            return Some(
+                self.manager
+                    .data_id_of_ldpc_variable(coded_id - self.params.k),
+            );
         } else if coded_id < self.params.num_total() {
-            return Some(self.manager.data_id_of_hdpc_variable(coded_id - self.params.num_message_ldpc()));
+            return Some(
+                self.manager
+                    .data_id_of_hdpc_variable(coded_id - self.params.num_message_ldpc()),
+            );
         }
 
         // coded_id >= self.params.num_total()

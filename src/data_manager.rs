@@ -3,13 +3,12 @@
 
 use crate::traits::DataOperator;
 //se crate::data_operators::VecDataOperater;
-use crate::algebra::finite_field::GF256;
-use crate::types::{CodeParams, SolverType, Operation};
+use crate::algebra::finite_field::{Field, GF256};
+use crate::types::{CodeParams, GF2_FIELD_POLY, Operation, SolverType};
 use std::collections::HashMap;
 
 /// Starting point for dynamically-allocated data vector IDs.
 const MAX_DATA_VECTOR_ID: usize = 10000000;
-
 
 /// Interface between the encoder/decoder and the underlying data storage.
 ///
@@ -33,7 +32,9 @@ pub struct DataManager {
     /// Optional operator that executes operations on actual data.
     operator: Option<Box<dyn DataOperator>>,
     /// Count of coded vectors inserted so far.
-    pub coded_vector_inserted: usize,
+    pub num_coded_vector_inserted: usize,
+    /// GF(256) instance for this session; unset when configured with [`GF2_FIELD_POLY`].
+    gf256: Option<GF256>,
 }
 
 impl Default for DataManager {
@@ -54,7 +55,8 @@ impl DataManager {
             coded_id_to_data_id: HashMap::new(),
             operator: None,
             last_retrieved_index: 0,
-            coded_vector_inserted: 0,
+            num_coded_vector_inserted: 0,
+            gf256: None,
         }
     }
 
@@ -69,11 +71,13 @@ impl DataManager {
             coded_id_to_data_id: HashMap::new(),
             operator: Some(operator),
             last_retrieved_index: 0,
-            coded_vector_inserted: 0,
+            num_coded_vector_inserted: 0,
+            gf256: None,
         }
     }
 
     /// Configures the manager with code parameters and solver type, setting up ID ranges.
+    ///
     pub fn config_from(&mut self, params: CodeParams, solver_type: SolverType) {
         self.params = params;
         match solver_type {
@@ -95,9 +99,42 @@ impl DataManager {
         //self.next_data_id += 1;
     }
 
+    /// Configures the finite field for LU solves and GF(256) scalar ops on this session.
+    ///
+    /// - `pp == [`GF2_FIELD_POLY`](crate::types::GF2_FIELD_POLY)`: GF(2) mode — `gf256()` is `None`;
+    ///   matrix elimination uses XOR; binary HDPC must not request non-trivial scalars.
+    /// - Any other allowed primitive polynomial (e.g. `0x11D`): builds GF(256) tables for
+    ///   `multiply_scalar`, `divide_scalar`, and LU over full `u8` coefficients.
+    ///
+    /// Propagates `pp` to the [`DataOperator`](crate::traits::DataOperator) when attached.
+    pub fn config_finite_field(&mut self, pp: u16) {
+        if pp == GF2_FIELD_POLY {
+            self.gf256 = None;
+        } else {
+            self.gf256 = Some(GF256::new_with_primitive_polynomial(pp));
+        }
+        if let Some(operator) = self.operator.as_mut() {
+            operator.config_finite_field(pp);
+        }
+    }
+
+    /// Same session field as `gf` (clones tables); propagates to the data operator.
+    pub fn config_finite_field_from(&mut self, gf: &GF256) {
+        self.gf256 = Some(gf.clone());
+        if let Some(operator) = self.operator.as_mut() {
+            operator.config_finite_field_from(gf);
+        }
+    }
+
+    /// GF(256) used for scalar multiply, divide, and consistency with matrix solves on this manager.
+    #[inline]
+    pub fn gf256(&self) -> Option<&GF256> {
+        self.gf256.as_ref()
+    }
+
     /// Registers a coded vector ID, allocating a new data ID if not already mapped. Returns the data ID.
     pub fn insert_coded_id(&mut self, coded_id: usize) -> usize {
-        self.coded_vector_inserted += 1;
+        self.num_coded_vector_inserted += 1;
         if let Some(data_id) = self.coded_id_to_data_id.get(&coded_id) {
             *data_id
         } else {
@@ -196,12 +233,10 @@ impl DataManager {
         self.variable_data_id_0 + self.params.a + idx
     }
 
-    
     /// Returns the data vector ID for the HDPC variable at the given index.
     pub fn data_id_of_hdpc_variable(&self, idx: usize) -> usize {
         self.variable_data_id_0 + idx + self.params.num_message_ldpc()
     }
-    
 
     /// Get all stored operations
     pub fn get_operations(&self) -> &[Operation] {
@@ -320,19 +355,23 @@ impl DataManager {
         if scalar == 0 {
             self.save_operation(Operation::EnsureZero { list_id: vec![id] });
         } else if scalar == 1 {
-        } else if scalar == GF256::default().alpha {
-            self.save_operation(Operation::MultiplyAlpha { id });
+        } else if let Some(gf) = self.gf256() {
+            if scalar == gf.primitive_element() {
+                self.save_operation(Operation::MultiplyAlpha { id });
+            } else {
+                self.save_operation(Operation::MultiplyScalar { scalar, id });
+            }
         } else {
-            self.save_operation(Operation::MultiplyScalar { scalar, id });
+            panic!("GF(256) is not set");
         }
     }
 
     /// Divides a vector by a GF(256) scalar (multiplies by its inverse).
     pub fn divide_scalar(&mut self, scalar: u8, id: usize) {
-        if scalar != 1 {
-            let gf = GF256::default();
+        if scalar == 1 {
+        } else if let Some(gf) = self.gf256() {
             let inverse = gf.inverse(scalar);
-            if inverse == gf.alpha {
+            if inverse == gf.primitive_element() {
                 self.save_operation(Operation::MultiplyAlpha { id });
             } else {
                 self.save_operation(Operation::MultiplyScalar {
@@ -340,6 +379,8 @@ impl DataManager {
                     id,
                 });
             }
+        } else {
+            panic!("GF(256) is not set");
         }
     }
 

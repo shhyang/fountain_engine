@@ -10,9 +10,6 @@
 pub mod finite_field;
 /// Matrix operations and LU-based linear system solvers over GF(256).
 pub mod linear_algebra;
-/// Binary (GF(2)) vector XOR operations.
-pub mod binary_vector;
 
 pub use finite_field::*;
 pub use linear_algebra::*;
-pub use binary_vector::*;

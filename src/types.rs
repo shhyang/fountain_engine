@@ -4,7 +4,19 @@
 /// Maximum number of inactive vectors allowed in the system.
 pub const MAX_INACTIVE_NUM: usize = 100; // Adjust this value as needed
 
-/// Type alias for degree set generator function (symbol index -> combined variable indices).
+/// Sentinel for [`HDPC::gf_poly`](crate::traits::HDPC::gf_poly) and
+/// [`DataManager::config_finite_field`](crate::DataManager::config_finite_field).
+///
+/// Not a real degree-8 polynomial. It selects a **GF(2)-only** session:
+/// - `DataManager::gf256()` is `None`; LU decomposition uses [`GF2`](crate::algebra::finite_field::GF2).
+/// - HDPC matrix multiply uses XOR only (`mul_data` / `mul_binary`); no GF(256) scalars.
+/// - `divide_scalar` / `multiply_scalar` on the manager only allow trivial scalars (e.g. pivot `1`).
+///
+/// Used by binary precodes (e.g. Raptor-10 `R10HDPC`). GF(256) HDPC (Raptor-Q style) returns a real
+/// polynomial such as `0x11D`.
+pub const GF2_FIELD_POLY: u16 = 0x001;
+
+/// Type alias for degree set generator function (symbol index -> active and inactive indices).
 pub type DegreeSetFn = Box<dyn FnMut(usize) -> Vec<usize>>;
 
 /// A struct for decoding configuration.
@@ -12,7 +24,6 @@ pub type DegreeSetFn = Box<dyn FnMut(usize) -> Vec<usize>>;
 pub struct DecodingConfig {
     pub max_inactive_num: usize,
     pub num_padding: usize,
-    pub pre_inactivation: PreInactivation,
     pub inac_strategy: InactivationStrategy,
     pub subs_method: SubstitutionMethod,
 }
@@ -22,7 +33,6 @@ impl Default for DecodingConfig {
         Self {
             max_inactive_num: 0,
             num_padding: 0,
-            pre_inactivation: PreInactivation::NoPre,
             inac_strategy: InactivationStrategy::ByIndex,
             subs_method: SubstitutionMethod::Direct,
         }
@@ -30,11 +40,6 @@ impl Default for DecodingConfig {
 }
 
 impl DecodingConfig {
-    /// Set the pre-inactivation flag to true.
-    pub fn with_pre_inact(mut self) -> Self {
-        self.pre_inactivation = PreInactivation::YesPre;
-        self
-    }
     pub fn with_max_inact_num(mut self, max_inactive_num: usize) -> Self {
         self.max_inactive_num = max_inactive_num;
         self
@@ -43,27 +48,44 @@ impl DecodingConfig {
 
 /// Parameters defining the structure of a fountain code.
 ///
-/// Specifies the number of source, active, inactive, LDPC, and HDPC vectors
+/// Specifies the number of message, active, inactive, LDPC, and HDPC vectors
 /// that together determine the code's parity-check matrix layout.
 #[derive(Clone, Debug)]
 pub struct CodeParams {
-    /// Total number of source (message) vectors.
+    /// Total number of message vectors.
     pub k: usize,
-    /// Number of active source vectors (decoded via BP).
+    /// Number of active message vectors (decoded via BP).
     pub a: usize,
-    /// Number of inactive source vectors (decoded via GE), equal to `k - a`.
+    /// Number of inactive message vectors (decoded via GE), equal to `k - a`.
     pub b: usize,
     /// Number of LDPC (Low-Density Parity-Check) constraint vectors.
     pub l: usize,
     /// Number of HDPC (High-Density Parity-Check) constraint vectors.
     pub h: usize,
+    // Number of pre-inactive variable vectors.
+    pub i: usize,
 }
 
 impl CodeParams {
-    /// Creates new code parameters. `b` is computed as `k - a`.
+    /// Creates new code parameters with pre-inactivation.
+    /// - `b` is computed as `k - a`.
+    /// - `i` is computed as `b + h`.
     pub fn new(k: usize, a: usize, l: usize, h: usize) -> Self {
         let b = k - a;
-        Self { k, a, b, l, h }
+        let i = b + h;
+        Self { k, a, b, l, h, i }
+    }
+
+    /// Creates new code parameters without pre-inactivation.
+    pub fn new_without_pre_inact(k: usize, l: usize, h: usize) -> Self {
+        Self {
+            k,
+            a: k,
+            b: 0,
+            l,
+            h,
+            i: 0,
+        }
     }
 
     /// Returns the number of active variable vectors (`a + l`).
@@ -73,13 +95,12 @@ impl CodeParams {
 
     /// Returns the number of pre-inactive variable vectors (`i`).
     pub fn num_pre_inactive(&self) -> usize {
-        self.b + self.h
+        self.i
     }
 
-    /// Same as [`num_pre_inactive`](Self::num_pre_inactive); kept for call sites that use this name.
-    #[inline]
+    /// Returns the number of inactive variable vectors (`b + h`).
     pub fn num_inactive(&self) -> usize {
-        self.num_pre_inactive()
+        self.b + self.h
     }
 
     /// Returns the combined count of message and LDPC vectors (`k + l`).
@@ -139,15 +160,6 @@ pub enum SubstitutionMethod {
     Original,
 }
 
-/// Type of pre-inactivation for decoding.
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum PreInactivation {
-    /// No pre-inactivation.
-    NoPre,
-    /// Pre-inactivate HDPC variable vectors.
-    YesPre,
-}
-
 /// Result of the decoding process.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum DecodeStatus {
@@ -156,7 +168,6 @@ pub enum DecodeStatus {
     /// Decoding is not yet complete.
     NotDecoded,
 }
-
 
 /// Data vector operations that can be recorded for delayed execution.
 ///

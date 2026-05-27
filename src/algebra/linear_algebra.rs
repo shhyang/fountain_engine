@@ -3,15 +3,40 @@
 
 #![allow(clippy::needless_range_loop)]
 
+use crate::algebra::finite_field::Field;
 use crate::algebra::finite_field::GF256;
 
+pub struct Vector;
+
+impl Vector {
+    pub fn add_inplace(a: &mut [u8], b: &[u8]) {
+        assert_eq!(a.len(), b.len());
+        for i in 0..a.len() {
+            a[i] ^= b[i];
+        }
+    }
+
+    /// Multiply a vector by alpha in-place: `result[i] = result[i] * alpha`
+    pub fn multiply_alpha_inplace(field: &GF256, result: &mut [u8]) {
+        for elem in result.iter_mut() {
+            *elem = field.mul_alpha(*elem);
+        }
+    }
+
+    /// Multiply a vector by a scalar in-place: `result[i] = scalar * result[i]`
+    pub fn scalar_vector_multiply_inplace<F: Field>(field: &F, scalar: u8, result: &mut [u8]) {
+        for elem in result.iter_mut() {
+            *elem = field.mul(scalar, *elem);
+        }
+    }
+}
 
 /// Matrix operations over GF(256), including multiplication, permutation, and LU decomposition.
 pub struct Matrix;
 
 impl Matrix {
     /// Multiplies two matrices `a` (m×n) and `b` (n×p) over GF(256), returning the m×p product.
-    pub fn multiply(field: &GF256, a: &[Vec<u8>], b: &[Vec<u8>]) -> Vec<Vec<u8>> {
+    pub fn multiply<F: Field>(field: &F, a: &[Vec<u8>], b: &[Vec<u8>]) -> Vec<Vec<u8>> {
         let m = a.len();
         let n = if m > 0 { a[0].len() } else { 0 };
         if n != b.len() {
@@ -22,7 +47,7 @@ impl Matrix {
         for (i, row) in result.iter_mut().enumerate() {
             for (j, &a_ij) in a[i].iter().take(n).enumerate() {
                 for (k, &val) in b[j].iter().enumerate() {
-                    row[k] ^= field.multiply(a_ij, val);
+                    row[k] ^= field.mul(a_ij, val);
                 }
             }
         }
@@ -51,7 +76,7 @@ impl Matrix {
 
     /// Perform LU decomposition of A. Return the permutation vector p and the rank r.
     /// This modifies A in-place to store the LU decomposition.
-    pub fn lu_decomp(field: &GF256, a: &mut [Vec<u8>]) -> (Vec<usize>, usize) {
+    pub fn lu_decomp<F: Field>(field: &F, a: &mut [Vec<u8>]) -> (Vec<usize>, usize) {
         let m = a.len();
         let n = if m > 0 { a[0].len() } else { 0 };
         let mut p: Vec<usize> = (0..m).collect();
@@ -76,7 +101,7 @@ impl Matrix {
 
                     // Update the rest of the row
                     for col in (j + 1)..n {
-                        a[k][col] = field.add(a[k][col], field.multiply(l, a[i][col]));
+                        a[k][col] = field.add(a[k][col], field.mul(l, a[i][col]));
                     }
                 }
                 i += 1;
@@ -92,8 +117,8 @@ impl Matrix {
     /// Perform LU decomposition of A incrementally. Return the permutation vector p and the rank r.
     /// This modifies A in-place to store the LU decomposition, and update q in-place, so that
     /// UQ is the upper triangular matrix of the LU decomposition.
-    pub fn lu_decomp_incr(
-        field: &GF256,
+    pub fn lu_decomp_incr<F: Field>(
+        field: &F,
         a: &mut [Vec<u8>],
         q: &mut [usize],
         r: usize,
@@ -107,7 +132,7 @@ impl Matrix {
                 let l = field.divide(a[k][q[i]], a[i][q[i]]);
                 a[k][q[i]] = l;
                 for col in i + 1..n {
-                    a[k][q[col]] = field.add(a[k][q[col]], field.multiply(l, a[i][q[col]]));
+                    a[k][q[col]] = field.add(a[k][q[col]], field.mul(l, a[i][q[col]]));
                 }
             }
         }
@@ -134,7 +159,7 @@ impl Matrix {
 
                     // Update the rest of the row
                     for col in i + 1..n {
-                        a[k][q[col]] = field.add(a[k][q[col]], field.multiply(l, a[i][q[col]]));
+                        a[k][q[col]] = field.add(a[k][q[col]], field.mul(l, a[i][q[col]]));
                     }
                 }
                 i += 1;
@@ -155,8 +180,8 @@ impl LinearSys {
     /// Solve the linear system Ax = b.
     /// A is a matrix, and b is a vector.
     /// Returns Some(x) if the system has a solution, None otherwise.
-    pub fn lin_solve(
-        field: &GF256,
+    pub fn lin_solve<F: Field>(
+        field: &F,
         a: &mut [Vec<u8>],
         b: &mut [Vec<u8>],
     ) -> Result<(), String> {
@@ -179,7 +204,7 @@ impl LinearSys {
 
     /// Solve the linear system Ax = b given the LU decomposition of A.
     /// This performs forward and backward substitution.
-    pub fn lu_solve(field: &GF256, a: &[Vec<u8>], b: &mut [Vec<u8>]) -> Result<(), String> {
+    pub fn lu_solve<F: Field>(field: &F, a: &[Vec<u8>], b: &mut [Vec<u8>]) -> Result<(), String> {
         let n = a.len();
         if n != b.len() {
             return Err("The number of rows in A and b must be the same".to_string());
@@ -187,15 +212,15 @@ impl LinearSys {
 
         /// Perform combined vector operation in-place: result[i] = result[i] + scalar * vec[i]
         #[inline]
-        fn combined_vector_operation_inplace(
-            field: &GF256,
+        fn combined_vector_operation_inplace<F: Field>(
+            field: &F,
             b: &mut [Vec<u8>],
             i: usize,
             scalar: u8,
             j: usize,
         ) {
             for k in 0..b[i].len() {
-                b[i][k] = field.add(b[i][k], field.multiply(scalar, b[j][k]));
+                b[i][k] = field.add(b[i][k], field.mul(scalar, b[j][k]));
             }
         }
 
@@ -208,7 +233,7 @@ impl LinearSys {
 
         // Backward substitution (U part)
         for j in (0..n).rev() {
-            field.scalar_vector_multiply_inplace(field.inverse(a[j][j]), &mut b[j]);
+            Vector::scalar_vector_multiply_inplace(field, field.inverse(a[j][j]), &mut b[j]);
             for i in (0..j).rev() {
                 combined_vector_operation_inplace(field, b, i, a[i][j], j);
             }

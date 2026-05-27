@@ -265,7 +265,7 @@ impl BPDecoder {
         }
 
         //dbg!("solve check", &var_id, &check_id);
-        //dbg!(&self.inactive_adj_matrix_row(check_id));        
+        //dbg!(&self.inactive_adj_matrix_row(check_id));
 
         self.checks[check_id].state = CheckState::Decoded;
         self.num_decoded_vars += 1;
@@ -461,16 +461,16 @@ impl BPDecoder {
     fn var_indices_inactive_adj_column(&self, seq: usize) -> Vec<usize> {
         let mut indices = Vec::with_capacity(self.checks.len());
         for i in 0..self.inactive_adj_matrix.len() {
-            if self.inactive_adj_matrix[i][seq] == 1
-                && self.checks[i].state == CheckState::Decoded {
-                    if self.checks[i].degree() != 1 {
-                        panic!("Check node degree is not 1");
-                    }
-                    let var_id = *self.checks[i].adjacent.first().unwrap();
-                    //if var_id < self.params.k { // if LDPC vectors are expected to be decoded, return the variable node id
-                    indices.push(var_id);
-                    //}
+            if self.inactive_adj_matrix[i][seq] == 1 && self.checks[i].state == CheckState::Decoded
+            {
+                if self.checks[i].degree() != 1 {
+                    panic!("Check node degree is not 1");
                 }
+                let var_id = *self.checks[i].adjacent.first().unwrap();
+                //if var_id < self.params.k { // if LDPC vectors are expected to be decoded, return the variable node id
+                indices.push(var_id);
+                //}
+            }
         }
         indices
     }

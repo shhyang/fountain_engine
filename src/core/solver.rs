@@ -3,7 +3,8 @@
 
 //use crate::fountain_code::degree_set::DegreeSet;
 use super::bp::BPDecoder;
-use crate::algebra::{finite_field::GF256, linear_algebra::Matrix};
+use crate::algebra::finite_field::GF2;
+use crate::algebra::linear_algebra::Matrix;
 use crate::data_manager::DataManager;
 use crate::traits::CodeScheme;
 use crate::traits::HDPC;
@@ -44,8 +45,10 @@ impl InactiveSolver {
     fn lu_decomposition(&mut self, manager: &mut DataManager) -> usize {
         //dbg!("lu_decomposition", &self.matrix_f);
         //dbg!("ids_unused", &self.ids_unused);
-        let (p, r) =
-            Matrix::lu_decomp_incr(&GF256::default(), &mut self.matrix_f, &mut self.q, self.r);
+        let (p, r) = match manager.gf256() {
+            Some(gf) => Matrix::lu_decomp_incr(gf, &mut self.matrix_f, &mut self.q, self.r),
+            None => Matrix::lu_decomp_incr(&GF2::new(), &mut self.matrix_f, &mut self.q, self.r),
+        };
         // remove redundancy and apply row permutation on ids_unused
         let mut ids_new = Vec::with_capacity(r);
         for &pi in &p[..r] {
@@ -151,7 +154,7 @@ impl Solver {
         let params = custom.get_params();
         let gen_degree_set = custom.create_degree_set_fn();
         let (hdpc, ldpc) = custom.create_precode();
-        let max_inactive_num = custom.max_inactive_num();
+        let max_inactive_num = custom.decoding_config().max_inactive_num;
         let mut bp_decoder = BPDecoder::new(&params, gen_degree_set, max_inactive_num);
 
         if let Some(ldpc) = ldpc {
@@ -169,6 +172,7 @@ impl Solver {
     }
 
     // called when BP phase is complete and not decoded, i.e., num_inactive > 0
+    #[allow(deprecated)]
     fn phase_change(&mut self, manager: &mut DataManager) {
         let mut inactive_solver = InactiveSolver::new(self.bp_decoder.num_inactive());
 
@@ -206,9 +210,8 @@ impl Solver {
             //}
 
             let mut matrix_d = hdpc.mul_sparse(
-                //&GF256::default(),
+                manager.gf256(),
                 &self.params,
-                //self.params.num_message_ldpc(),
                 self.bp_decoder.num_inactive(),
                 &indices_g_row,
             );

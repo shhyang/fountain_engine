@@ -7,13 +7,21 @@ use crate::types::CodeParams;
 /// LDPC trait for the parity check matrices S_a and S_i.
 pub trait LDPC {
     /// Non-zero entries for a column of S_a
-    fn active_column(&self, _var_col: usize) -> Vec<usize> { vec![] }
+    fn active_column(&self, _var_col: usize) -> Vec<usize> {
+        vec![]
+    }
     /// Non-zero entries for a row of S_a
-    fn active_row(&self, _check_row: usize) -> Vec<usize> { vec![] }
+    fn active_row(&self, _check_row: usize) -> Vec<usize> {
+        vec![]
+    }
     /// Non-zero entries for a column of S_i
-    fn inactive_column(&self, _var_col: usize) -> Vec<usize> { vec![] }
+    fn inactive_column(&self, _var_col: usize) -> Vec<usize> {
+        vec![]
+    }
     /// Non-zero entries for a row of S_i
-    fn inactive_row(&self, _check_row: usize) -> Vec<usize> { vec![] }
+    fn inactive_row(&self, _check_row: usize) -> Vec<usize> {
+        vec![]
+    }
 
     /// Encode the message vectors with the LDPC matrix with default encoding method
     fn encode(&self, manager: &mut DataManager, params: &CodeParams) {

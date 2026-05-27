@@ -51,8 +51,7 @@ use crate::types::Operation;
 /// The data operator should be implemented for specific applications. Vector data management, vector operation acceleration, multi-threading, etc. should be considered in the data operator implementation, but not in the coding library.
 pub trait DataOperator {
     /// Stores a byte vector under the given data ID.
-    fn insert_vector(&mut self, _vector: &[u8], _data_id: usize) {
-    }
+    fn insert_vector(&mut self, _vector: &[u8], _data_id: usize) {}
 
     /// Retrieves a reference to the byte vector stored at the given data ID.
     fn get_vector(&self, _data_id: usize) -> &[u8] {
@@ -71,4 +70,15 @@ pub trait DataOperator {
 
     /// Executes a single [`Operation`] on the stored vectors.
     fn execute(&mut self, operation: &Operation);
+
+    /// Default: no-op. In-memory operators should rebuild GF(256) tables when `pp` is a real
+    /// primitive polynomial; ignore [`crate::types::GF2_FIELD_POLY`].
+    fn config_finite_field(&mut self, pp: u16) {
+        let _ = pp;
+    }
+
+    /// Use the same GF(256) tables as `gf` (default: [`config_finite_field`](Self::config_finite_field) with `gf.primitive_polynomial()`).
+    fn config_finite_field_from(&mut self, gf: &crate::algebra::finite_field::GF256) {
+        self.config_finite_field(gf.primitive_polynomial());
+    }
 }
