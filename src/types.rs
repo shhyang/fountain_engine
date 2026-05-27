@@ -77,6 +77,7 @@ impl CodeParams {
     }
 
     /// Creates new code parameters without pre-inactivation.
+<<<<<<< HEAD
     pub fn new_without_pre_inact(k: usize, l: usize, h: usize) -> Self {
         Self {
             k,
@@ -86,6 +87,11 @@ impl CodeParams {
             h,
             i: 0,
         }
+=======
+    pub fn new_without_pre_inact(k: usize, a: usize, l: usize, h: usize) -> Self {
+        let b = k - a;
+        Self { k, a, b, l, h, i: 0 }
+>>>>>>> 0afe3e8e6cb11cd0899de2ddf7865b4372f5eb7b
     }
 
     /// Returns the number of active variable vectors (`a + l`).
