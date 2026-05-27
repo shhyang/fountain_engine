@@ -161,6 +161,12 @@ impl Solver {
             //let ldpc = LDPCType::new(ldpc_type, params.clone());
             bp_decoder.add_ldpc_check_node(manager, ldpc);
         }
+
+        if let Some(hdpc_box) = &hdpc {
+            // See `precode_encode`: `GF2_FIELD_POLY` for binary HDPC, else GF(256).
+            manager.config_finite_field(hdpc_box.gf_poly());
+        }
+        
         Self {
             params,
             bp_decoder,
