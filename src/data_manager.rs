@@ -31,6 +31,9 @@ pub struct DataManager {
     coded_id_to_data_id: HashMap<usize, usize>,
     /// Optional operator that executes operations on actual data.
     operator: Option<Box<dyn DataOperator>>,
+    /// When `false`, operations are executed on the operator but not appended to `operations`.
+    /// Use for production decode with an attached operator when trace/replay is not needed.
+    record_operations: bool,
     /// Count of coded vectors inserted so far.
     pub num_coded_vector_inserted: usize,
     /// GF(256) instance for this session; unset when configured with [`GF2_FIELD_POLY`].
@@ -57,6 +60,7 @@ impl DataManager {
             last_retrieved_index: 0,
             num_coded_vector_inserted: 0,
             gf256: None,
+            record_operations: true,
         }
     }
 
@@ -73,7 +77,34 @@ impl DataManager {
             last_retrieved_index: 0,
             num_coded_vector_inserted: 0,
             gf256: None,
+            record_operations: true,
         }
+    }
+
+    /// Like [`Self::new_with_operator`], but skips recording operations (execute-only).
+    ///
+    /// Suitable when an operator is attached and operation traces are not needed.
+    pub fn new_with_operator_execute_only(operator: Box<dyn DataOperator>) -> Self {
+        let mut manager = Self::new_with_operator(operator);
+        manager.record_operations = false;
+        manager
+    }
+
+    /// When `false`, [`save_operation`](Self::save_operation) still runs the operator but
+    /// does not push to the operation log.
+    pub fn set_record_operations(&mut self, record: bool) {
+        self.record_operations = record;
+    }
+
+    /// Returns whether operations are appended to the log after execution.
+    #[must_use]
+    pub fn records_operations(&self) -> bool {
+        self.record_operations
+    }
+
+    /// Disables operation logging; operations are still executed on the attached operator.
+    pub fn execute_only(&mut self) {
+        self.record_operations = false;
     }
 
     /// Configures the manager with code parameters and solver type, setting up ID ranges.
@@ -268,11 +299,16 @@ impl DataManager {
     }
 
     fn save_operation(&mut self, operation: Operation) {
-        self.operations.push(operation.clone());
         if let Some(ref mut operator) = self.operator {
             operator.execute(&operation);
-            //self.last_retrieved_index = self.operations.len();
         }
+        if self.record_operations {
+            self.operations.push(operation);
+        }
+    }
+
+    fn save_add_to_vector(&mut self, list_id: Vec<usize>, target_id: usize) {
+        self.save_operation(Operation::AddToVector { list_id, target_id });
     }
 
     /// Returns a copy of the variable vector at the given variable index. Requires an operator.
@@ -386,10 +422,47 @@ impl DataManager {
 
     /// XORs (adds) multiple source vectors into a single target vector.
     pub fn add_to_vector(&mut self, list_id: &[usize], target_id: usize) {
-        self.save_operation(Operation::AddToVector {
-            list_id: list_id.to_vec(),
+        match list_id.len() {
+            0 => {}
+            1 => self.add_one_to_vector(list_id[0], target_id),
+            2 => self.add_two_to_vector(list_id[0], list_id[1], target_id),
+            3 => self.add_three_to_vector(list_id[0], list_id[1], list_id[2], target_id),
+            _ => self.save_add_to_vector(list_id.to_vec(), target_id),
+        }
+    }
+
+    /// XOR one source vector into a target (hot path for GF(2) LU / single-source BS).
+    pub fn add_one_to_vector(&mut self, src_id: usize, target_id: usize) {
+        self.save_operation(Operation::AddOneToVector { src_id, target_id });
+    }
+
+    /// XOR two source vectors into a target (hot path for sparse back-substitution).
+    pub fn add_two_to_vector(&mut self, s0: usize, s1: usize, target_id: usize) {
+        if s0 == s1 {
+            return;
+        }
+        self.save_operation(Operation::AddTwoToVector { s0, s1, target_id });
+    }
+
+    /// XOR three source vectors into a target (hot path for sparse back-substitution).
+    pub fn add_three_to_vector(&mut self, s0: usize, s1: usize, s2: usize, target_id: usize) {
+        self.save_operation(Operation::AddThreeToVector {
+            s0,
+            s1,
+            s2,
             target_id,
         });
+    }
+
+    /// XOR sources into a target, taking ownership of `list_id` (no slice copy).
+    pub fn add_to_vector_owned(&mut self, list_id: Vec<usize>, target_id: usize) {
+        match list_id.len() {
+            0 => {}
+            1 => self.add_one_to_vector(list_id[0], target_id),
+            2 => self.add_two_to_vector(list_id[0], list_id[1], target_id),
+            3 => self.add_three_to_vector(list_id[0], list_id[1], list_id[2], target_id),
+            _ => self.save_add_to_vector(list_id, target_id),
+        }
     }
 
     /// XORs a single source vector into each of the given target vectors.
@@ -404,10 +477,7 @@ impl DataManager {
     pub fn mul_add(&mut self, src_id: usize, scalar: u8, target_id: usize) {
         if scalar == 0 {
         } else if scalar == 1 {
-            self.save_operation(Operation::AddToVector {
-                list_id: vec![src_id],
-                target_id,
-            });
+            self.add_one_to_vector(src_id, target_id);
         } else {
             self.save_operation(Operation::MulAdd {
                 src_id,
@@ -446,6 +516,71 @@ impl DataManager {
     /// Records an informational marker associating a coded vector with its data vector (for encoding).
     pub fn encode_coded_vector(&mut self, coded_id: usize, data_id: usize) {
         self.save_operation(Operation::InfoCodedVector { coded_id, data_id });
+    }
+
+    /*
+    /// Is a padding vector?
+    pub fn is_padding(&self, var_id: usize) -> bool {
+        if self.params.p == 0 {
+            return false;
+        }
+        match self.padding_config {
+            PaddingConfig::AtEnd => {
+                if self.params.p <= self.params.b {
+                    var_id >= self.params.num_message_ldpc() - self.params.p && var_id < self.params.num_message_ldpc()
+                } else {
+                    (var_id >= self.params.num_message_ldpc() - self.params.b && var_id < self.params.num_message_ldpc()) || (var_id >= self.params.k - self.params.p && var_id < self.params.a)
+                }
+            }
+            PaddingConfig::AsActive => {
+                var_id >= self.params.a - self.params.p && var_id < self.params.a
+            }
+        }
+    }*/
+
+    /// For ordinary coding with padding, prepare the data vector IDs so that padding vectors
+    /// occupy the tail of the active message range before precoding, then move inactive
+    /// message vectors into inactive variable slots.
+    pub fn prepare_for_ordinary(&mut self) {
+        //if self.params.p == 0 || self.padding_config == PaddingConfig::AtEnd {
+        //    if self.params.p > 0 {
+        //        let num_msg = self.params.num_message();
+        //        self.ensure_zero(&(num_msg..self.params.k).collect::<Vec<_>>());
+       //     }
+            // move the inactive message vectors to the inactive message variable data vectors
+            for i in (self.params.a..self.params.k).rev() {
+                self.move_to(i, self.data_id_of_inactive_variable(i - self.params.a));
+            }
+       // } else {
+       //     let p_start = self.params.a - self.params.p;
+       //     let num_msg = self.params.num_message();
+       //     for i in (p_start..num_msg).rev() {
+       //         self.move_to(i, self.data_id_of_inactive_variable(i - p_start));
+       //     }
+       //     // append the padding vectors to the active message range
+       //     self.ensure_zero(&(p_start..self.params.a).collect::<Vec<_>>());
+       // }
+    }
+
+    /// Restore the data vector IDs after ordinary decoding completes.
+    pub fn restore_for_ordinary(&mut self) {
+        //if self.params.p == 0 {
+            for i in 0..self.params.b {
+                self.move_to(self.data_id_of_inactive_variable(i), i + self.params.a);
+            }
+        //} else if self.padding_config == PaddingConfig::AtEnd {
+       //     if self.params.p < self.params.b {
+       //         let p_end = self.params.b - self.params.p;
+       //         for i in 0..p_end {
+       //             self.move_to(self.data_id_of_inactive_variable(i), i + self.params.a);
+       //         }
+       //     }
+       // } else {
+       //     let p_start = self.params.a - self.params.p;
+       //     for i in 0..self.params.b {
+       //         self.move_to(self.data_id_of_inactive_variable(i), i + p_start);
+       //     }
+       // }
     }
 }
 

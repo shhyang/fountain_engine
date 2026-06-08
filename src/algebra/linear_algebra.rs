@@ -170,6 +170,101 @@ impl Matrix {
         }
         (p, i)
     }
+
+    /// Incremental LU for a matrix whose first `binary_rows` rows contain only `{0,1}` entries.
+    ///
+    /// Master-exported inactive rows (RaptorQ) stay on an XOR fast path when the pivot row is
+    /// binary with a `1` on the diagonal; HDPC rows appended after them use full GF(256) math.
+    pub fn lu_decomp_incr_mixed(
+        field: &GF256,
+        a: &mut [Vec<u8>],
+        q: &mut [usize],
+        r: usize,
+        binary_rows: usize,
+    ) -> (Vec<usize>, usize) {
+        let m = a.len();
+        let n = if m > 0 { a[0].len() } else { 0 };
+        let mut p = (0..m).collect::<Vec<_>>();
+
+        for i in 0..r {
+            let binary_pivot = i < binary_rows && a[i][q[i]] == 1;
+            for k in r..m {
+                let akqi = a[k][q[i]];
+                if akqi == 0 {
+                    continue;
+                }
+                let pivot = a[i][q[i]];
+                if pivot == 0 {
+                    continue;
+                }
+                let l = if binary_pivot { akqi } else { field.divide(akqi, pivot) };
+                a[k][q[i]] = l;
+                if l == 0 {
+                    continue;
+                }
+                if binary_pivot && l == 1 {
+                    for col in i + 1..n {
+                        let u = a[i][q[col]];
+                        if u != 0 {
+                            a[k][q[col]] ^= u;
+                        }
+                    }
+                } else {
+                    for col in i + 1..n {
+                        let u = a[i][q[col]];
+                        if u != 0 {
+                            a[k][q[col]] = field.add(a[k][q[col]], field.mul(l, u));
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut i = r;
+
+        for j in r..n {
+            let mut pivot_found = false;
+            for k in i..a.len() {
+                if a[k][q[j]] != 0 {
+                    p.swap(i, k);
+                    a.swap(i, k);
+                    pivot_found = true;
+                    break;
+                }
+            }
+
+            if pivot_found {
+                q.swap(i, j);
+                for k in i + 1..m {
+                    let l = field.divide(a[k][q[i]], a[i][q[i]]);
+                    a[k][q[i]] = l;
+                    if l == 0 {
+                        continue;
+                    }
+                    if l == 1 {
+                        for col in i + 1..n {
+                            let u = a[i][q[col]];
+                            if u != 0 {
+                                a[k][q[col]] ^= u;
+                            }
+                        }
+                    } else {
+                        for col in i + 1..n {
+                            let u = a[i][q[col]];
+                            if u != 0 {
+                                a[k][q[col]] = field.add(a[k][q[col]], field.mul(l, u));
+                            }
+                        }
+                    }
+                }
+                i += 1;
+                if i == m {
+                    break;
+                }
+            }
+        }
+        (p, i)
+    }
 }
 
 /// Linear solver for systems over GF(256)
@@ -274,5 +369,32 @@ mod tests {
 
         let result = LinearSys::lin_solve(&field, &mut a, &mut b);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn lu_decomp_incr_mixed_matches_gf256_on_binary_prefix() {
+        let field = GF256::default();
+        let n = 8;
+        let binary_rows = 5;
+        let mut q_ref = (0..n).collect::<Vec<_>>();
+        let mut q_mix = q_ref.clone();
+        let mut a_ref = vec![
+            vec![1, 0, 1, 0, 0, 0, 0, 0],
+            vec![0, 1, 1, 0, 0, 0, 0, 0],
+            vec![1, 1, 0, 1, 0, 0, 0, 0],
+            vec![0, 0, 1, 1, 1, 0, 0, 0],
+            vec![1, 0, 0, 1, 0, 1, 0, 0],
+            vec![2, 3, 1, 0, 4, 0, 1, 0],
+            vec![1, 5, 0, 2, 3, 1, 1, 0],
+        ];
+        let mut a_mix = a_ref.clone();
+        let r0 = 0;
+        let (p_ref, r_ref) = Matrix::lu_decomp_incr(&field, &mut a_ref, &mut q_ref, r0);
+        let (p_mix, r_mix) =
+            Matrix::lu_decomp_incr_mixed(&field, &mut a_mix, &mut q_mix, r0, binary_rows);
+        assert_eq!(r_ref, r_mix);
+        assert_eq!(p_ref, p_mix);
+        assert_eq!(q_ref, q_mix);
+        assert_eq!(a_ref, a_mix);
     }
 }

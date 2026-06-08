@@ -23,7 +23,8 @@ pub type DegreeSetFn = Box<dyn FnMut(usize) -> Vec<usize>>;
 #[derive(Clone, Debug)]
 pub struct DecodingConfig {
     pub max_inactive_num: usize,
-    pub num_padding: usize,
+    //move this value to CodeParams
+    //pub num_padding: usize,
     pub inac_strategy: InactivationStrategy,
     pub subs_method: SubstitutionMethod,
 }
@@ -32,7 +33,8 @@ impl Default for DecodingConfig {
     fn default() -> Self {
         Self {
             max_inactive_num: 0,
-            num_padding: 0,
+            //move this value to CodeParams
+            //num_padding: 0,
             inac_strategy: InactivationStrategy::ByIndex,
             subs_method: SubstitutionMethod::Direct,
         }
@@ -64,6 +66,8 @@ pub struct CodeParams {
     pub h: usize,
     // Number of pre-inactive variable vectors.
     pub i: usize,
+    // Number of padding vectors.
+    //pub p: usize,
 }
 
 impl CodeParams {
@@ -87,6 +91,19 @@ impl CodeParams {
             i: 0,
         }
     }
+/*
+    /// Create new code parameters with padding vectors.
+    pub fn with_padding(mut self, p: usize) -> Self {
+        if p < self.a {
+            self.p = p;
+        } else {
+            eprintln!(
+                "with_padding: padding count {p} must be less than active message vectors (a={}); ignoring",
+                self.a
+            );
+        }
+        self
+    }*/
 
     /// Returns the number of active variable vectors (`a + l`).
     pub fn num_active(&self) -> usize {
@@ -111,6 +128,14 @@ impl CodeParams {
     /// Returns the total number of variable vectors (`k + l + h`).
     pub fn num_total(&self) -> usize {
         self.k + self.l + self.h
+    }
+
+    pub fn has_precode(&self) -> bool {
+        self.l > 0 || self.h > 0
+    }
+
+    pub fn num_message(&self) -> usize {
+        self.k
     }
 }
 
@@ -193,6 +218,30 @@ pub enum Operation {
         scalar: u8,
         /// ID of the vector to multiply.
         id: usize,
+    },
+    /// XOR one source vector into a target (GF(2) hot path; no `Vec` allocation).
+    AddOneToVector {
+        /// ID of the source vector.
+        src_id: usize,
+        /// ID of the destination vector.
+        target_id: usize,
+    },
+    /// XOR two source vectors into a target (GF(2) hot path; no `Vec` allocation).
+    AddTwoToVector {
+        /// IDs of source vectors.
+        s0: usize,
+        s1: usize,
+        /// ID of the destination vector.
+        target_id: usize,
+    },
+    /// XOR three source vectors into a target (GF(2) hot path; no `Vec` allocation).
+    AddThreeToVector {
+        /// IDs of source vectors.
+        s0: usize,
+        s1: usize,
+        s2: usize,
+        /// ID of the destination vector.
+        target_id: usize,
     },
     /// XOR (add in GF(2)/GF(256)) multiple source vectors into a target vector.
     AddToVector {

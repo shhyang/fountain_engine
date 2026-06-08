@@ -15,17 +15,26 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    pub fn new<T: CodeScheme>(custom: T) -> Self {
+    pub fn new<T: CodeScheme>(custom: &T) -> Self {
         let manager = DataManager::new();
         Self::initialize(custom, manager)
     }
 
-    pub fn new_with_operator<T: CodeScheme>(custom: T, operator: Box<dyn DataOperator>) -> Self {
+    pub fn new_with_operator<T: CodeScheme>(custom: &T, operator: Box<dyn DataOperator>) -> Self {
         let manager = DataManager::new_with_operator(operator);
         Self::initialize(custom, manager)
     }
 
-    fn initialize<T: CodeScheme>(custom: T, mut manager: DataManager) -> Self {
+    /// Like [`Self::new_with_operator`], but does not record operations (execute-only).
+    pub fn new_with_operator_execute_only<T: CodeScheme>(
+        custom: &T,
+        operator: Box<dyn DataOperator>,
+    ) -> Self {
+        let manager = DataManager::new_with_operator_execute_only(operator);
+        Self::initialize(custom, manager)
+    }
+
+    fn initialize<T: CodeScheme>(custom: &T, mut manager: DataManager) -> Self {
         let params = custom.get_params();
         let mut data_ids = Option::None;
         let mut gen_degree_set = Option::None;
@@ -42,7 +51,7 @@ impl Decoder {
         } else {
             //dbg!("ordinary decoding");
         }
-        let solver = Solver::new(&custom, &mut manager);
+        let solver = Solver::new(custom, &mut manager);
         Self {
             params,
             manager,
