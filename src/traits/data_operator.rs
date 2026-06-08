@@ -71,7 +71,7 @@ pub trait DataOperator {
     /// Executes a single [`Operation`] on the stored vectors.
     fn execute(&mut self, operation: &Operation);
 
-    /// Align stored-field arithmetic with [`DataManager::config_finite_field`].
+    /// Align stored-field arithmetic with [`crate::DataManager::config_finite_field`].
     /// Default: no-op. In-memory operators should rebuild GF(256) tables when `pp` is a real
     /// primitive polynomial; ignore [`crate::types::GF2_FIELD_POLY`].
     fn config_finite_field(&mut self, pp: u16) {

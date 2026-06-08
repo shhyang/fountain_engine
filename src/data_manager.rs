@@ -90,7 +90,7 @@ impl DataManager {
         manager
     }
 
-    /// When `false`, [`save_operation`](Self::save_operation) still runs the operator but
+    /// When `false`, `save_operation` still runs the operator but
     /// does not push to the operation log.
     pub fn set_record_operations(&mut self, record: bool) {
         self.record_operations = record;
