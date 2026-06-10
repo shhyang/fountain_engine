@@ -53,6 +53,21 @@ pub trait HDPC {
         };
         self.mul_sparse(gf, params, n, &s)
     }
+
+    /// Multiplies the HDPC matrix by a prebuilt \(\tilde{G}\) (`kl` rows of length `num_inactive`).
+    ///
+    /// Default collects rows via [`mul_binary`](HDPC::mul_binary); GF(256) precodes should override.
+    fn mul_binary_from_rows(
+        &self,
+        gf: Option<&GF256>,
+        params: &CodeParams,
+        rows: &[Vec<u8>],
+    ) -> Vec<Vec<u8>> {
+        let n = rows.first().map_or(0, Vec::len);
+        let v = |i: usize| rows[i].clone();
+        self.mul_binary(gf, params, n, &v)
+    }
+
     /// Multiplies the HDPC matrix by a sparse matrix given as non-zero index lists per column.
     /// This interface is deprecated. Use [`mul_binary`](HDPC::mul_binary) instead.
     #[deprecated(since = "1.1.0", note = "use mul_binary instead")]

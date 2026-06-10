@@ -329,6 +329,31 @@ impl BPDecoder {
         check_id
     }
 
+    /// Add a coded vector that connects to a single variable (degree-1 bootstrap).
+    pub fn add_degree_one_coded_vector(
+        &mut self,
+        manager: &mut DataManager,
+        data_id: usize,
+        var_id: usize,
+    ) -> usize {
+        let check_id = self.add_check_node(data_id);
+        match self.variable_states[var_id] {
+            VarState::Active => self.add_edge_active(var_id, check_id),
+            VarState::Inactive { seq: _ } => self.add_edge_inactive(var_id, check_id),
+            VarState::Decoded {
+                check_id: decoded_by,
+            } => {
+                let var_data_id = manager.data_id_of_variable_vector(var_id);
+                manager.add_to_vector(&[var_data_id], data_id);
+                self.xor_inactive_vars(decoded_by, check_id);
+            }
+        }
+        if self.checks[check_id].degree() == 1 {
+            self.add_decodable(check_id);
+        }
+        check_id
+    }
+
     /// Run BP decoding
     pub fn run(&mut self, manager: &mut DataManager) -> usize {
         loop {

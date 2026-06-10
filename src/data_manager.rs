@@ -38,6 +38,10 @@ pub struct DataManager {
     pub num_coded_vector_inserted: usize,
     /// GF(256) instance for this session; unset when configured with [`GF2_FIELD_POLY`].
     gf256: Option<GF256>,
+    /// Application source count K (payload symbols). Defaults to [`CodeParams::k`] in [`Self::config_from`].
+    num_source: usize,
+    /// Session direction from the last [`Self::config_from`] call (encode vs decode).
+    solver_type: SolverType,
 }
 
 impl Default for DataManager {
@@ -61,6 +65,8 @@ impl DataManager {
             num_coded_vector_inserted: 0,
             gf256: None,
             record_operations: true,
+            num_source: 0,
+            solver_type: SolverType::OrdEnc,
         }
     }
 
@@ -78,6 +84,8 @@ impl DataManager {
             num_coded_vector_inserted: 0,
             gf256: None,
             record_operations: true,
+            num_source: 0,
+            solver_type: SolverType::OrdEnc,
         }
     }
 
@@ -111,6 +119,8 @@ impl DataManager {
     ///
     pub fn config_from(&mut self, params: CodeParams, solver_type: SolverType) {
         self.params = params;
+        self.solver_type = solver_type;
+        self.num_source = self.params.k;
         match solver_type {
             SolverType::OrdEnc => {
                 self.variable_data_id_0 = 0;
@@ -128,6 +138,51 @@ impl DataManager {
         self.next_data_id = self.variable_data_id_0 + self.params.num_total();
         //self.temp_data_id = self.next_data_id;
         //self.next_data_id += 1;
+    }
+
+    /// Sets the application source block size K (payload symbol count).
+    ///
+    /// Must satisfy `k <= params.k` (internal block size K′). When `k < params.k`, implicit
+    /// padding applies; encode/decode installation is handled by the encoder, decoder, and
+    /// solver once those paths call this method.
+    ///
+    /// Default after [`Self::config_from`] is `num_source == params.k` (no padding).
+    pub fn set_num_source(&mut self, k: usize) {
+        assert!(
+            k <= self.params.k,
+            "num_source ({k}) must be <= block_k ({})",
+            self.params.k
+        );
+        assert!(
+            k >= self.params.b,
+            "num_source ({k}) must be >= inactive message count ({})",
+            self.params.b
+        );
+        self.num_source = k;
+    }
+
+    /// Application source count K (payload symbols).
+    #[must_use]
+    pub fn num_source(&self) -> usize {
+        self.num_source
+    }
+
+    /// Implicit zero padding count: `params.k − num_source`.
+    #[must_use]
+    pub fn num_padding(&self) -> usize {
+        self.params.k.saturating_sub(self.num_source)
+    }
+
+    /// Whether this session uses implicit padding (`num_source < params.k`).
+    #[must_use]
+    pub fn has_padding(&self) -> bool {
+        self.num_padding() > 0
+    }
+
+    /// Solver type from the last [`Self::config_from`] call.
+    #[must_use]
+    pub fn solver_type(&self) -> SolverType {
+        self.solver_type
     }
 
     /// Configures the finite field for LU solves and GF(256) scalar ops on this session.
@@ -542,15 +597,16 @@ impl DataManager {
     /// occupy the tail of the active message range before precoding, then move inactive
     /// message vectors into inactive variable slots.
     pub fn prepare_for_ordinary(&mut self) {
-        //if self.params.p == 0 || self.padding_config == PaddingConfig::AtEnd {
-        //    if self.params.p > 0 {
-        //        let num_msg = self.params.num_message();
-        //        self.ensure_zero(&(num_msg..self.params.k).collect::<Vec<_>>());
-       //     }
+        for i in 1..=self.params.b {
+            self.move_to(self.num_source - i, self.data_id_of_inactive_variable(self.params.b - i));
+        }
+        if self.has_padding() {
+            self.ensure_zero(&(self.num_source - self.params.b..self.params.a).collect::<Vec<_>>());
+        }
             // move the inactive message vectors to the inactive message variable data vectors
-            for i in (self.params.a..self.params.k).rev() {
-                self.move_to(i, self.data_id_of_inactive_variable(i - self.params.a));
-            }
+            //for i in (self.params.a..self.params.k).rev() {
+            //    self.move_to(i, self.data_id_of_inactive_variable(i - self.params.a));
+            //}
        // } else {
        //     let p_start = self.params.a - self.params.p;
        //     let num_msg = self.params.num_message();
@@ -565,9 +621,10 @@ impl DataManager {
     /// Restore the data vector IDs after ordinary decoding completes.
     pub fn restore_for_ordinary(&mut self) {
         //if self.params.p == 0 {
-            for i in 0..self.params.b {
-                self.move_to(self.data_id_of_inactive_variable(i), i + self.params.a);
-            }
+        let num_a = self.params.a - self.num_padding();
+        for i in 0..self.params.b {
+            self.move_to(self.data_id_of_inactive_variable(i), i + num_a);
+        }
         //} else if self.padding_config == PaddingConfig::AtEnd {
        //     if self.params.p < self.params.b {
        //         let p_end = self.params.b - self.params.p;
@@ -679,4 +736,38 @@ macro_rules! lu_solve_incr {
             }
         }
     }};
+}
+
+#[cfg(test)]
+mod num_source_tests {
+    use super::*;
+    use crate::types::SolverType;
+
+    #[test]
+    fn config_from_defaults_num_source_to_block_k() {
+        let mut mgr = DataManager::new();
+        mgr.config_from(CodeParams::new(12, 12, 0, 0), SolverType::SysEnc);
+        assert_eq!(mgr.num_source(), 12);
+        assert_eq!(mgr.num_padding(), 0);
+        assert!(!mgr.has_padding());
+        assert_eq!(mgr.solver_type(), SolverType::SysEnc);
+    }
+
+    #[test]
+    fn set_num_source_lowers_k_and_sets_padding_count() {
+        let mut mgr = DataManager::new();
+        mgr.config_from(CodeParams::new(12, 11, 0, 0), SolverType::OrdEnc);
+        mgr.set_num_source(10);
+        assert_eq!(mgr.num_source(), 10);
+        assert_eq!(mgr.num_padding(), 2);
+        assert!(mgr.has_padding());
+    }
+
+    #[test]
+    #[should_panic(expected = "num_source (13) must be <= block_k (12)")]
+    fn set_num_source_panics_when_k_exceeds_block_k() {
+        let mut mgr = DataManager::new();
+        mgr.config_from(CodeParams::new(12, 12, 0, 0), SolverType::SysDec);
+        mgr.set_num_source(13);
+    }
 }

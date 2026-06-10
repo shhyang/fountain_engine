@@ -16,25 +16,51 @@ pub struct Decoder {
 
 impl Decoder {
     pub fn new<T: CodeScheme>(custom: &T) -> Self {
+        let num_source = custom.get_params().k;
+        Self::new_with_num_source(custom, num_source)
+    }
+
+    pub fn new_with_num_source<T: CodeScheme>(custom: &T, num_source: usize) -> Self {
         let manager = DataManager::new();
-        Self::initialize(custom, manager)
+        Self::initialize(custom, manager, num_source)
     }
 
     pub fn new_with_operator<T: CodeScheme>(custom: &T, operator: Box<dyn DataOperator>) -> Self {
-        let manager = DataManager::new_with_operator(operator);
-        Self::initialize(custom, manager)
+        let num_source = custom.get_params().k;
+        Self::new_with_operator_and_num_source(custom, operator, num_source)
     }
 
-    /// Like [`Self::new_with_operator`], but does not record operations (execute-only).
+    pub fn new_with_operator_and_num_source<T: CodeScheme>(
+        custom: &T,
+        operator: Box<dyn DataOperator>,
+        num_source: usize,
+    ) -> Self {
+        let manager = DataManager::new_with_operator(operator);
+        Self::initialize(custom, manager, num_source)
+    }
+
     pub fn new_with_operator_execute_only<T: CodeScheme>(
         custom: &T,
         operator: Box<dyn DataOperator>,
     ) -> Self {
-        let manager = DataManager::new_with_operator_execute_only(operator);
-        Self::initialize(custom, manager)
+        let num_source = custom.get_params().k;
+        Self::new_with_operator_execute_only_and_num_source(custom, operator, num_source)
     }
 
-    fn initialize<T: CodeScheme>(custom: &T, mut manager: DataManager) -> Self {
+    pub fn new_with_operator_execute_only_and_num_source<T: CodeScheme>(
+        custom: &T,
+        operator: Box<dyn DataOperator>,
+        num_source: usize,
+    ) -> Self {
+        let manager = DataManager::new_with_operator_execute_only(operator);
+        Self::initialize(custom, manager, num_source)
+    }
+
+    fn initialize<T: CodeScheme>(
+        custom: &T,
+        mut manager: DataManager,
+        num_source: usize,
+    ) -> Self {
         let params = custom.get_params();
         let mut data_ids = Option::None;
         let mut gen_degree_set = Option::None;
@@ -44,14 +70,16 @@ impl Decoder {
             CodeType::Ordinary => SolverType::OrdDec,
         };
         manager.config_from(params.clone(), solver_type);
+        manager.set_num_source(num_source);
+
         if code_type == CodeType::Systematic {
-            //dbg!("systematic decoding");
-            data_ids = Some(vec![false; params.k]);
+            data_ids = Some(vec![false; num_source]);
             gen_degree_set = Some(custom.create_degree_set_fn());
-        } else {
-            //dbg!("ordinary decoding");
         }
-        let solver = Solver::new(custom, &mut manager);
+
+        let mut solver = Solver::new(custom, &mut manager);
+        solver.install_padding(&mut manager);
+
         Self {
             params,
             manager,
@@ -64,7 +92,7 @@ impl Decoder {
     pub fn decode_status(&self) -> DecodeStatus {
         if let Some(received_msg_vectors) = self.received_msg_vectors.as_ref() {
             let num_received = received_msg_vectors.iter().filter(|&id| *id).count();
-            if num_received == self.params.k {
+            if num_received == self.manager.num_source() {
                 return DecodeStatus::Decoded;
             }
         }
@@ -80,16 +108,13 @@ impl Decoder {
         let data_id = self.manager.insert_coded_id(coded_id);
         self.manager.add_coded_vector(coded_id, data_id);
 
-        if coded_id < self.params.k {
-            // systematic decoding
+        let num_msg = self.manager.num_source();
+        if coded_id < num_msg {
             if let Some(received_msg_vectors) = self.received_msg_vectors.as_mut() {
-                // copy the coded vector to the message vector
-                //let msg_data_id = manager.data_id_of_message_vector(coded_id);
                 self.manager.copy_to(data_id, coded_id);
-                // check the number of received message vectors
                 received_msg_vectors[coded_id] = true;
                 let num_received = received_msg_vectors.iter().filter(|&id| *id).count();
-                if num_received == self.params.k {
+                if num_received == num_msg {
                     return DecodeStatus::Decoded;
                 }
             } else {
@@ -113,11 +138,10 @@ impl Decoder {
         if self.solver.status == DecodeStatus::Decoded {
             if let Some(received_msg_vectors) = self.received_msg_vectors.as_mut() {
                 let gen_degree_set = self.gen_degree_set.as_mut().unwrap();
-                // generate the missing message vectors
                 for (msg_id, received) in received_msg_vectors
                     .iter_mut()
                     .enumerate()
-                    .take(self.params.k)
+                    .take(self.params.num_message())
                 {
                     if *received {
                         continue;
@@ -132,16 +156,55 @@ impl Decoder {
                     *received = true;
                 }
             } else {
-                // ordinary decoding
-                for i in 0..self.params.b {
-                    self.manager.move_to(
-                        self.manager.data_id_of_inactive_variable(i),
-                        i + self.params.a,
-                    );
-                }
+                self.manager.restore_for_ordinary();
             }
         }
 
         self.solver.status
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::traits::{CodeScheme, PrecodePair};
+    use crate::types::{DecodingConfig, DegreeSetFn};
+
+    #[derive(Clone)]
+    struct DummySystematic {
+        k: usize,
+    }
+
+    impl CodeScheme for DummySystematic {
+        fn get_params(&self) -> CodeParams {
+            CodeParams::new(self.k, self.k, 0, 0)
+        }
+
+        fn code_type(&self) -> CodeType {
+            CodeType::Systematic
+        }
+
+        fn create_degree_set_fn(&self) -> DegreeSetFn {
+            Box::new(|_| vec![0])
+        }
+
+        fn create_precode(&self) -> PrecodePair {
+            (None, None)
+        }
+
+        fn decoding_config(&self) -> DecodingConfig {
+            DecodingConfig::default()
+        }
+    }
+
+    #[test]
+    fn new_with_num_source_registers_systematic_padding_coded_ids() {
+        let scheme = DummySystematic { k: 12 };
+        let decoder = Decoder::new_with_num_source(&scheme, 10);
+        assert_eq!(decoder.manager.num_source(), 10);
+        assert!(decoder.manager.has_padding());
+        assert!(decoder.manager.data_id_of_coded_vector(10).is_some());
+        assert!(decoder.manager.data_id_of_coded_vector(11).is_some());
+        assert!(decoder.manager.data_id_of_coded_vector(12).is_none());
     }
 }

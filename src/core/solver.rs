@@ -10,6 +10,7 @@ use crate::traits::CodeScheme;
 use crate::traits::HDPC;
 use crate::types::CodeParams;
 use crate::types::DecodeStatus;
+use crate::types::SolverType;
 
 struct InactiveSolver {
     matrix_d: Vec<Vec<u8>>,
@@ -174,6 +175,31 @@ impl Solver {
             inactive_solver: None,
             phase: DecodePhase::BP,
             status: DecodeStatus::NotDecoded,
+        }
+    }
+
+    /// Install implicit padding after [`Self::new`], mirroring `SystemSolver::new` session setup.
+    pub fn install_padding(&mut self, manager: &mut DataManager) {
+        let num_k = self.params.k;
+        let num_a = self.params.a;
+        match manager.solver_type() {
+            SolverType::OrdDec => {
+                for var_id in num_a - manager.num_padding()..num_a {
+                    let new_data_id = manager.coded_data_id(var_id);
+                    manager.ensure_zero(&[new_data_id]);
+                    self.bp_decoder
+                        .add_degree_one_coded_vector(manager, new_data_id, var_id);
+                }
+                let _ = self.bp_decoder.run(manager);
+            }
+            SolverType::SysDec => {
+                for coded_id in manager.num_source()..num_k {
+                    let new_data_id = manager.coded_data_id(coded_id);
+                    manager.ensure_zero(&[new_data_id]);
+                    self.add_coded_vector(manager, coded_id, new_data_id);
+                }
+            }
+            _ => {}
         }
     }
 

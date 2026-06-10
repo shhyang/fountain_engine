@@ -96,6 +96,13 @@ fn hdpc_solve(
     for (i, row) in idssh.iter_mut().take(params.h).enumerate() {
         row[i] ^= 1;
     }
+    // Performance (not implemented): precompute and cache LU of `(I' + D_s S_h)` keyed by
+    // `(CodeParams, HDPC/LDPC scheme identity, gf_poly)`. `mul_sparse_sh` and the diagonal
+    // fixup depend only on static precoding structure, not symbol bytes; `lu_decomp` and
+    // row permutation `p` are therefore identical for every encode at the same K. A warm
+    // cache would skip matrix assembly + factorization and reuse stored `(p, lu_factors)`;
+    // per-encode work would remain `lu_solve` on live HDPC constraint vectors and the LDPC
+    // substitution below. Analogous to ref/raptorq `SourceBlockEncodingPlan` (encode-only).
     let (p, r) = match manager.gf256() {
         Some(gf) => Matrix::lu_decomp(gf, &mut idssh),
         None => Matrix::lu_decomp(&GF2::new(), &mut idssh),
