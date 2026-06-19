@@ -33,20 +33,16 @@ pub trait LDPC {
                 .iter()
                 .map(|&id| manager.data_id_of_ldpc_variable(id))
                 .collect::<Vec<_>>();
-            //dbg!("LDPC encoder", &msg_id, &ldpc_ids);
-            manager.broadcast_add(manager.data_id_of_active_variable(msg_id), &ldpc_ids);
+            manager.broadcast_add_owned(manager.data_id_of_active_variable(msg_id), ldpc_ids);
         }
         // Calculate S_bB_b with the result added to L
         for msg_id in 0..params.b {
             let adj_checks = self.inactive_column(msg_id);
-            //dbg!("LDPC encoder", &msg_id, &adj_checks);
             let ldpc_ids = adj_checks
                 .iter()
                 .map(|&id| manager.data_id_of_ldpc_variable(id))
                 .collect::<Vec<_>>();
-            //dbg!("LDPC encoder", &msg_id, &ldpc_ids);
-            manager.broadcast_add(manager.data_id_of_inactive_variable(msg_id), &ldpc_ids);
+            manager.broadcast_add_owned(manager.data_id_of_inactive_variable(msg_id), ldpc_ids);
         }
-        //dbg!("LDPC encoder", manager.get_vector(21));
     }
 }

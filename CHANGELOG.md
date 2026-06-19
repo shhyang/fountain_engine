@@ -2,6 +2,20 @@
 
 All notable changes to the published `fountain_engine` crate are documented here.
 
+## [1.3.2] - 2026-06-19
+
+### Changed
+
+- **Ordinary precoding:** refactored `core/precode.rs` — HDPC factorization of \(I' + D_s S_h\) moved to [`HDPC::lu_idssh`](src/traits/hdpc.rs); entry point renamed to `ordinary_precode_encode` (called from `Encoder::precode_encode`).
+- **LDPC encode:** default implementation uses `broadcast_add_owned` to avoid extra slice clones.
+- **Encoder:** systematic padding slots use `ensure_zero_one`; LT encoding uses `add_to_vector_owned`.
+
+### Added
+
+- **`HDPC::lu_idssh`:** default LU of \(I' + D_s S_h\) for ordinary precoding (override for custom factorizations).
+- **`DataManager::broadcast_add_owned`:** take ownership of target ID lists when recording broadcast ops.
+- **`Operation::EnsureZeroOne`** / **`DataManager::ensure_zero_one`:** zero a single vector without allocating a `Vec`.
+
 ## [1.3.1] - 2026-06-08
 
 ### Added

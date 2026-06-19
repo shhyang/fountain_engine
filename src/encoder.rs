@@ -1,8 +1,8 @@
 // Copyright (c) 2025 Shenghao Yang.
 // All rights reserved.
 
+use crate::core::{ordinary_precode_encode, solver::Solver};
 use crate::data_manager::DataManager;
-use crate::core::{precode_encode, solver::Solver};
 use crate::traits::{CodeScheme, DataOperator};
 use crate::types::{CodeParams, CodeType, DecodeStatus, DegreeSetFn, SolverType};
 
@@ -133,7 +133,7 @@ impl Encoder {
             CodeType::Ordinary => {
                 if self.params.has_precode() {
                     self.manager.prepare_for_ordinary();
-                    precode_encode(&mut self.manager, &self.params, custom);
+                    ordinary_precode_encode(&mut self.manager, custom);
                 }
             }
             CodeType::Systematic => {
@@ -145,7 +145,7 @@ impl Encoder {
                 }
                 for coded_id in self.manager.num_source()..self.params.k {
                     let new_data_id = self.manager.coded_data_id(coded_id);
-                    self.manager.ensure_zero(&[new_data_id]);
+                    self.manager.ensure_zero_one(new_data_id);
                     solver.add_coded_vector(&mut self.manager, coded_id, new_data_id);
                 }
                 if solver.status == DecodeStatus::NotDecoded {
@@ -195,7 +195,7 @@ impl Encoder {
             .iter()
             .map(|&id| self.manager.data_id_of_variable_vector(id))
             .collect::<Vec<_>>();
-        self.manager.add_to_vector(&data_ids, data_id);
+        self.manager.add_to_vector_owned(data_ids, data_id);
         self.manager.encode_coded_vector(coded_id, data_id);
         Some(data_id)
     }

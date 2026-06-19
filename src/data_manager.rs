@@ -241,7 +241,7 @@ impl DataManager {
         let data_id = self.next_data_id;
         self.next_data_id += 1;
         self.coded_id_to_data_id.insert(coded_id, data_id);
-        self.ensure_zero(&[data_id]);
+        self.ensure_zero_one(data_id);
         data_id
     }
 
@@ -249,7 +249,7 @@ impl DataManager {
     pub fn temp_data_id(&mut self) -> usize {
         let data_id = self.next_data_id;
         self.next_data_id += 1;
-        self.ensure_zero(&[data_id]);
+        self.ensure_zero_one(data_id);
         data_id
     }
 
@@ -430,10 +430,17 @@ impl DataManager {
     //}
 
     /// Records an [`Operation::EnsureZero`] to zero the given vectors.
+    ///
+    /// Prefer [`Self::ensure_zero_one`] when zeroing a single vector to avoid cloning.
     pub fn ensure_zero(&mut self, list_id: &[usize]) {
         self.save_operation(Operation::EnsureZero {
             list_id: list_id.to_vec(),
         });
+    }
+
+    /// Records an [`Operation::EnsureZeroOne`] to zero a single vector (no `Vec` allocation).
+    pub fn ensure_zero_one(&mut self, id: usize) {
+        self.save_operation(Operation::EnsureZeroOne { id });
     }
 
     /// Records an [`Operation::MultiplyAlpha`] to multiply a vector by the primitive element.
@@ -444,7 +451,7 @@ impl DataManager {
     /// Multiplies a vector by a GF(256) scalar, with special-case optimizations for 0, 1, and alpha.
     pub fn multiply_scalar(&mut self, scalar: u8, id: usize) {
         if scalar == 0 {
-            self.save_operation(Operation::EnsureZero { list_id: vec![id] });
+            self.ensure_zero_one(id);
         } else if scalar == 1 {
         } else if let Some(gf) = self.gf256() {
             if scalar == gf.primitive_element() {
@@ -521,10 +528,23 @@ impl DataManager {
     }
 
     /// XORs a single source vector into each of the given target vectors.
+    ///
+    /// Prefer [`Self::broadcast_add_owned`] when `target_ids` is already a `Vec` to avoid cloning.
     pub fn broadcast_add(&mut self, src_id: usize, target_ids: &[usize]) {
         self.save_operation(Operation::BroadcastAdd {
             src_id,
             target_ids: target_ids.to_vec(),
+        });
+    }
+
+    /// Like [`Self::broadcast_add`], but takes ownership of `target_ids` (no slice clone).
+    pub fn broadcast_add_owned(&mut self, src_id: usize, target_ids: Vec<usize>) {
+        if target_ids.is_empty() {
+            return;
+        }
+        self.save_operation(Operation::BroadcastAdd {
+            src_id,
+            target_ids,
         });
     }
 

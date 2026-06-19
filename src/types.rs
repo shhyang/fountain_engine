@@ -207,6 +207,10 @@ pub enum Operation {
         /// IDs of vectors to zero.
         list_id: Vec<usize>,
     },
+    EnsureZeroOne {
+        /// ID of the vector to zero.
+        id: usize,
+    },
     /// Multiply a vector element-wise by the primitive element alpha in GF(256).
     MultiplyAlpha {
         /// ID of the vector to multiply.
