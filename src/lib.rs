@@ -4,7 +4,8 @@
 //! Fountain Code Core Library
 //!
 //! This library provides the core algorithms, traits, and data structures
-//! for fountain code encoding and decoding.
+//! for fountain code encoding and decoding, built on the
+//! [`core::system_solver::SystemSolver`] (BP + inactivation + Gaussian elimination) stack.
 
 /// Finite field arithmetic, linear algebra, and binary vector utilities.
 pub mod algebra;
@@ -18,14 +19,11 @@ pub mod encoder;
 pub mod traits;
 /// Core type definitions: code parameters, operation variants, and status enums.
 pub mod types;
-//pub mod data_operators{
-//    pub mod vec_data_operater;
-//    pub use vec_data_operater::*;
-//}
 
 pub use algebra::*;
+pub use core::binary_matrix::BinaryMatrix;
+pub use data_manager::DataManager;
 pub use decoder::*;
 pub use encoder::*;
-pub use data_manager::DataManager;
 pub use traits::*;
 pub use types::*;

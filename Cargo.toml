@@ -1,6 +1,6 @@
 [package]
 name = "fountain_engine"
-version = "1.3.2"
+version = "2.0.0"
 edition = "2024"
 authors = ["Shenghao Yang"]
 license = "AGPL-3.0-only"
@@ -10,5 +10,18 @@ documentation = "https://shhyang.github.io/fountain_docs/"
 keywords = ["fountain-code", "erasure-coding", "rateless", "LT-code"]
 categories = ["algorithms", "encoding", "network-programming"]
 readme = "README.md"
+include = [
+    "src/**",
+    "Cargo.toml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "LICENSE-AGPL",
+    "LICENSE-COMMERCIAL",
+]
+
+[features]
+default = []
 
 [dependencies]
+smallvec = "1.13"

@@ -91,7 +91,7 @@ impl CodeParams {
             i: 0,
         }
     }
-/*
+    /*
     /// Create new code parameters with padding vectors.
     pub fn with_padding(mut self, p: usize) -> Self {
         if p < self.a {

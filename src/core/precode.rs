@@ -26,7 +26,12 @@ pub fn ordinary_precode_encode<T: CodeScheme>(manager: &mut DataManager, custom:
             for _ in 0..params.h {
                 hdpc_constraint_data_ids.push(manager.temp_data_id());
             }
-            hdpc.mul_data(manager, &params, &variable_ids_kl, &hdpc_constraint_data_ids);
+            hdpc.mul_data(
+                manager,
+                &params,
+                &variable_ids_kl,
+                &hdpc_constraint_data_ids,
+            );
 
             hdpc_solve(
                 manager,

@@ -4,6 +4,7 @@
 use crate::algebra::finite_field::GF2;
 use crate::algebra::finite_field::GF256;
 use crate::algebra::linear_algebra::Matrix;
+use crate::core::binary_matrix::BinaryMatrix;
 use crate::data_manager::DataManager;
 use crate::traits::LDPC;
 use crate::types::CodeParams;
@@ -69,6 +70,35 @@ pub trait HDPC {
         let n = rows.first().map_or(0, Vec::len);
         let v = |i: usize| rows[i].clone();
         self.mul_binary(gf, params, n, &v)
+    }
+
+    /// Multiplies the HDPC matrix by a packed binary matrix (`tilde_g`: row `i` = column `i`).
+    ///
+    /// Default falls back to [`mul_binary`](HDPC::mul_binary) via byte rows. Binary precodes
+    /// (e.g. Raptor-10) should override with a word-XOR Gray-code implementation.
+    fn mul_binary_packed(
+        &self,
+        gf: Option<&GF256>,
+        params: &CodeParams,
+        num_inactive: usize,
+        tilde_g: &BinaryMatrix,
+    ) -> BinaryMatrix {
+        let v = |i: usize| tilde_g.row_bytes(i, num_inactive);
+        let dense = self.mul_binary(gf, params, num_inactive, &v);
+        let mut out = BinaryMatrix::new(num_inactive);
+        for row in dense {
+            let nwords = out.words_per_row();
+            let mut words = vec![0_u64; nwords];
+            for (seq, &byte) in row.iter().enumerate().take(num_inactive) {
+                if byte != 0 {
+                    let word = seq / 64;
+                    let bit = seq % 64;
+                    words[word] |= 1_u64 << bit;
+                }
+            }
+            out.append_row_from_words(&words, num_inactive);
+        }
+        out
     }
 
     /// Multiplies the HDPC matrix by a sparse matrix given as non-zero index lists per column.

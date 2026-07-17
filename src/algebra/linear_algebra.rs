@@ -73,7 +73,6 @@ impl Matrix {
             }
         }
     }
-
     /// Perform LU decomposition of A. Return the permutation vector p and the rank r.
     /// This modifies A in-place to store the LU decomposition.
     pub fn lu_decomp<F: Field>(field: &F, a: &mut [Vec<u8>]) -> (Vec<usize>, usize) {
@@ -171,9 +170,63 @@ impl Matrix {
         (p, i)
     }
 
+    /// Incremental LU for binary matrix.
+    pub fn lu_decomp_incr_binary(
+        a: &mut [Vec<u8>],
+        q: &mut [usize],
+        r: usize,
+    ) -> (Vec<usize>, usize) {
+        let m = a.len();
+        let n = if m > 0 { a[0].len() } else { 0 };
+        let mut p = (0..m).collect::<Vec<_>>();
+
+        for i in 0..r {
+            assert_eq!(a[i][q[i]], 1);
+            for k in r..m {
+                if a[k][q[i]] == 1 {
+                    for col in i + 1..n {
+                        a[k][q[col]] ^= a[i][q[col]];
+                    }
+                }
+            }
+        }
+
+        let mut i = r;
+
+        for j in r..n {
+            let mut pivot_found = false;
+            for k in i..a.len() {
+                if a[k][q[j]] != 0 {
+                    p.swap(i, k);
+                    a.swap(i, k);
+                    pivot_found = true;
+                    break;
+                }
+            }
+
+            if pivot_found {
+                // at (i,j)
+                q.swap(i, j);
+                assert_eq!(a[i][q[i]], 1);
+                for k in i + 1..m {
+                    if a[k][q[i]] == 1 {
+                        for col in i + 1..n {
+                            a[k][q[col]] ^= a[i][q[col]];
+                        }
+                    }
+                }
+                i += 1;
+                if i == m {
+                    break;
+                }
+            }
+        }
+        (p, i)
+    }
+
     /// Incremental LU for a matrix whose first `binary_rows` rows contain only `{0,1}` entries.
     ///
-    /// Master-exported inactive rows (RaptorQ) stay on an XOR fast path when the pivot row is
+    /// Master-exported inactive rows ( RaptorQ) stay on an XOR fast path when the pivot row is
     /// binary with a `1` on the diagonal; HDPC rows appended after them use full GF(256) math.
     pub fn lu_decomp_incr_mixed(
         field: &GF256,
@@ -197,7 +250,11 @@ impl Matrix {
                 if pivot == 0 {
                     continue;
                 }
-                let l = if binary_pivot { akqi } else { field.divide(akqi, pivot) };
+                let l = if binary_pivot {
+                    akqi
+                } else {
+                    field.divide(akqi, pivot)
+                };
                 a[k][q[i]] = l;
                 if l == 0 {
                     continue;
@@ -305,35 +362,70 @@ impl LinearSys {
             return Err("The number of rows in A and b must be the same".to_string());
         }
 
-        /// Perform combined vector operation in-place: result[i] = result[i] + scalar * vec[i]
-        #[inline]
-        fn combined_vector_operation_inplace<F: Field>(
-            field: &F,
-            b: &mut [Vec<u8>],
-            i: usize,
-            scalar: u8,
-            j: usize,
-        ) {
-            for k in 0..b[i].len() {
-                b[i][k] = field.add(b[i][k], field.mul(scalar, b[j][k]));
-            }
-        }
-
-        // Forward substitution (L part)
-        for j in 0..n - 1 {
+        for j in 0..n.saturating_sub(1) {
             for i in j + 1..n {
-                combined_vector_operation_inplace(field, b, i, a[i][j], j);
+                Self::combined_vector_operation_inplace(field, b, i, a[i][j], j);
             }
         }
 
-        // Backward substitution (U part)
         for j in (0..n).rev() {
             Vector::scalar_vector_multiply_inplace(field, field.inverse(a[j][j]), &mut b[j]);
             for i in (0..j).rev() {
-                combined_vector_operation_inplace(field, b, i, a[i][j], j);
+                Self::combined_vector_operation_inplace(field, b, i, a[i][j], j);
             }
         }
         Ok(())
+    }
+
+    /// Solve the linear system Ax = b given incremental LU decomposition and column permutation `q`.
+    pub fn lu_solve_incr<F: Field>(
+        field: &F,
+        a: &[Vec<u8>],
+        b: &mut [Vec<u8>],
+        q: &[usize],
+    ) -> Result<(), String> {
+        let n = a.len();
+        if n != b.len() {
+            return Err("The number of rows in A and b must be the same".to_string());
+        }
+
+        for j in 0..n.saturating_sub(1) {
+            for i in j + 1..n {
+                let l = a[i][q[j]];
+                if l != 0 {
+                    Self::combined_vector_operation_inplace(field, b, i, l, j);
+                }
+            }
+        }
+
+        for j in (0..n).rev() {
+            let diag = a[j][q[j]];
+            if diag == 0 {
+                return Err(format!(
+                    "Singular matrix: diagonal element at position {j} is zero"
+                ));
+            }
+            Vector::scalar_vector_multiply_inplace(field, field.inverse(diag), &mut b[j]);
+            for i in (0..j).rev() {
+                let l = a[i][q[j]];
+                if l != 0 {
+                    Self::combined_vector_operation_inplace(field, b, i, l, j);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn combined_vector_operation_inplace<F: Field>(
+        field: &F,
+        b: &mut [Vec<u8>],
+        i: usize,
+        scalar: u8,
+        j: usize,
+    ) {
+        for k in 0..b[i].len() {
+            b[i][k] = field.add(b[i][k], field.mul(scalar, b[j][k]));
+        }
     }
 }
 

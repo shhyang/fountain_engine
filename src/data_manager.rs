@@ -483,6 +483,8 @@ impl DataManager {
     }
 
     /// XORs (adds) multiple source vectors into a single target vector.
+    ///
+    /// Prefer [`Self::add_to_vector_owned`] when `list_id` is already a `Vec` to avoid cloning.
     pub fn add_to_vector(&mut self, list_id: &[usize], target_id: usize) {
         match list_id.len() {
             0 => {}
@@ -542,10 +544,7 @@ impl DataManager {
         if target_ids.is_empty() {
             return;
         }
-        self.save_operation(Operation::BroadcastAdd {
-            src_id,
-            target_ids,
-        });
+        self.save_operation(Operation::BroadcastAdd { src_id, target_ids });
     }
 
     /// Computes `target += scalar * src` over GF(256), with fast-paths for scalar 0 and 1.
@@ -618,24 +617,27 @@ impl DataManager {
     /// message vectors into inactive variable slots.
     pub fn prepare_for_ordinary(&mut self) {
         for i in 1..=self.params.b {
-            self.move_to(self.num_source - i, self.data_id_of_inactive_variable(self.params.b - i));
+            self.move_to(
+                self.num_source - i,
+                self.data_id_of_inactive_variable(self.params.b - i),
+            );
         }
         if self.has_padding() {
             self.ensure_zero(&(self.num_source - self.params.b..self.params.a).collect::<Vec<_>>());
         }
-            // move the inactive message vectors to the inactive message variable data vectors
-            //for i in (self.params.a..self.params.k).rev() {
-            //    self.move_to(i, self.data_id_of_inactive_variable(i - self.params.a));
-            //}
-       // } else {
-       //     let p_start = self.params.a - self.params.p;
-       //     let num_msg = self.params.num_message();
-       //     for i in (p_start..num_msg).rev() {
-       //         self.move_to(i, self.data_id_of_inactive_variable(i - p_start));
-       //     }
-       //     // append the padding vectors to the active message range
-       //     self.ensure_zero(&(p_start..self.params.a).collect::<Vec<_>>());
-       // }
+        // move the inactive message vectors to the inactive message variable data vectors
+        //for i in (self.params.a..self.params.k).rev() {
+        //    self.move_to(i, self.data_id_of_inactive_variable(i - self.params.a));
+        //}
+        // } else {
+        //     let p_start = self.params.a - self.params.p;
+        //     let num_msg = self.params.num_message();
+        //     for i in (p_start..num_msg).rev() {
+        //         self.move_to(i, self.data_id_of_inactive_variable(i - p_start));
+        //     }
+        //     // append the padding vectors to the active message range
+        //     self.ensure_zero(&(p_start..self.params.a).collect::<Vec<_>>());
+        // }
     }
 
     /// Restore the data vector IDs after ordinary decoding completes.
@@ -646,18 +648,18 @@ impl DataManager {
             self.move_to(self.data_id_of_inactive_variable(i), i + num_a);
         }
         //} else if self.padding_config == PaddingConfig::AtEnd {
-       //     if self.params.p < self.params.b {
-       //         let p_end = self.params.b - self.params.p;
-       //         for i in 0..p_end {
-       //             self.move_to(self.data_id_of_inactive_variable(i), i + self.params.a);
-       //         }
-       //     }
-       // } else {
-       //     let p_start = self.params.a - self.params.p;
-       //     for i in 0..self.params.b {
-       //         self.move_to(self.data_id_of_inactive_variable(i), i + p_start);
-       //     }
-       // }
+        //     if self.params.p < self.params.b {
+        //         let p_end = self.params.b - self.params.p;
+        //         for i in 0..p_end {
+        //             self.move_to(self.data_id_of_inactive_variable(i), i + self.params.a);
+        //         }
+        //     }
+        // } else {
+        //     let p_start = self.params.a - self.params.p;
+        //     for i in 0..self.params.b {
+        //         self.move_to(self.data_id_of_inactive_variable(i), i + p_start);
+        //     }
+        // }
     }
 }
 

@@ -2,6 +2,23 @@
 
 All notable changes to the published `fountain_engine` crate are documented here.
 
+## [2.0.0] - 2026-07-17
+
+### Changed
+
+- **Solver cutover (breaking):** `Encoder` / `Decoder` are built on `core::system_solver::SystemSolver` (sparse master system + inactivation + Gaussian elimination) instead of the legacy belief-propagation / `Solver` stack from 1.x.
+- **Public API:** the crate root re-exports `BinaryMatrix` alongside the existing encoder, decoder, traits, and types.
+
+### Removed
+
+- **Legacy v1 stack:** `encoder_v1`, `decoder_v1`, and the old BP/`Solver` core modules are not part of the package.
+- **Feature flags:** `legacy_solver`, `next_solver`, and `profiling` are not published. Profiling and staging solvers remain monorepo development facilities only.
+
+### Migration
+
+- Applications already using the default (non-`legacy_solver`) 1.x `Encoder` / `Decoder` API typically need only a version bump to `2.0`.
+- Applications that depended on `legacy_solver` or on published `profiling` APIs must migrate to the `SystemSolver`-based API; those features are not available in the published 2.x crate.
+
 ## [1.3.2] - 2026-06-19
 
 ### Changed
