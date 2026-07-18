@@ -121,7 +121,7 @@ impl Decoder {
     pub fn decode_status(&self) -> DecodeStatus {
         if let Some(received_msg_vectors) = self.received_msg_vectors.as_ref() {
             let num_received = received_msg_vectors.iter().filter(|&id| *id).count();
-            if num_received == self.params.num_message() {
+            if num_received == self.manager.num_source() {
                 return DecodeStatus::Decoded;
             }
         }
@@ -172,11 +172,7 @@ impl Decoder {
             if let Some(received_msg_vectors) = self.received_msg_vectors.as_mut() {
                 let gen_degree_set = self.gen_degree_set.as_mut().unwrap();
                 // generate the missing message vectors
-                for (msg_id, received) in received_msg_vectors
-                    .iter_mut()
-                    .enumerate()
-                    .take(self.params.num_message())
-                {
+                for (msg_id, received) in received_msg_vectors.iter_mut().enumerate() {
                     if *received {
                         continue;
                     }

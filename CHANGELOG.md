@@ -2,6 +2,17 @@
 
 All notable changes to the published `fountain_engine` crate are documented here.
 
+## [2.0.1] - 2026-07-18
+
+### Fixed
+
+- **Systematic `decode_status` with padding:** compare received source count to
+  `DataManager::num_source()` (application \(K\)) instead of `CodeParams::num_message()`
+  (block \(K'\)). With `num_source < K'`, `decode_status()` previously never reported
+  `Decoded` from the systematic early path even when every source symbol had arrived.
+- **Post-solve message recovery:** iterate `received_msg_vectors` by its natural length
+  (\(K\)) instead of `.take(num_message())` (\(K'\)).
+
 ## [2.0.0] - 2026-07-17
 
 ### Changed

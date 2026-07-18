@@ -26,7 +26,7 @@ Profiling / timing introspection and staging solver experiments are monorepo dev
 
 ```toml
 [dependencies]
-fountain_engine = "2.0.0"
+fountain_engine = "2.0.1"
 ```
 
 ## License
