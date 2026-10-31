@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Shenghao Yang. All rights reserved.
-// Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
+// Licensed under the MIT License. See LICENSE for details.
 
 //! System-based decoder that works on `MasterSystem` and `InactiveSystem`.
 //!
@@ -342,6 +342,7 @@ mod tests {
             match op {
                 Operation::EnsureZero { list_id } => ids.extend(list_id.iter().copied()),
                 Operation::EnsureZeroOne { id } => ids.push(*id),
+                Operation::EnsureZeroRange { start, end } => ids.extend(*start..*end),
                 _ => {}
             }
         }
@@ -379,8 +380,12 @@ mod tests {
         assert_eq!(
             mgr.get_operations()
                 .iter()
-                .filter(|op| matches!(op, Operation::CopyTo { .. }))
-                .count(),
+                .map(|op| match op {
+                    Operation::CopyTo { .. } => 1,
+                    Operation::CopyToN { count, .. } => *count,
+                    _ => 0,
+                })
+                .sum::<usize>(),
             10
         );
     }
@@ -394,8 +399,12 @@ mod tests {
         assert_eq!(
             mgr.get_operations()
                 .iter()
-                .filter(|op| matches!(op, Operation::CopyTo { .. }))
-                .count(),
+                .map(|op| match op {
+                    Operation::CopyTo { .. } => 1,
+                    Operation::CopyToN { count, .. } => *count,
+                    _ => 0,
+                })
+                .sum::<usize>(),
             12
         );
         let zeroed = ensure_zero_ids(&mgr);

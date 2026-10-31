@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Shenghao Yang. All rights reserved.
-// Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
+// Licensed under the MIT License. See LICENSE for details.
 
 use crate::data_manager::DataManager;
 //use crate::types::Operation;
@@ -316,6 +316,7 @@ mod tests {
     fn ensure_zero_ids(enc: &Encoder) -> Option<Vec<usize>> {
         enc.manager.get_operations().iter().find_map(|op| match op {
             Operation::EnsureZero { list_id } => Some(list_id.clone()),
+            Operation::EnsureZeroRange { start, end } => Some((*start..*end).collect()),
             _ => None,
         })
     }

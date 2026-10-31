@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Shenghao Yang. All rights reserved.
-// Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
+// Licensed under the MIT License. See LICENSE for details.
 
 use crate::data_manager::DataManager;
 use crate::traits::CodeScheme;
@@ -21,17 +21,10 @@ pub fn ordinary_precode_encode<T: CodeScheme>(manager: &mut DataManager, custom:
         if let Some(hdpc) = hdpc {
             // GF(256) HDPC: real `pp`; binary HDPC (e.g. R10): `GF2_FIELD_POLY` → LU over GF(2).
             manager.config_finite_field(hdpc.gf_poly());
-            let variable_ids_kl: Vec<usize> = manager.data_id_range_of_msg_ldpc_variable();
-            let mut hdpc_constraint_data_ids = Vec::with_capacity(params.h);
-            for _ in 0..params.h {
-                hdpc_constraint_data_ids.push(manager.temp_data_id());
-            }
-            hdpc.mul_data(
-                manager,
-                &params,
-                &variable_ids_kl,
-                &hdpc_constraint_data_ids,
-            );
+            let x = manager.data_id_range_of_msg_ldpc_variable();
+            let y = manager.temp_data_ids(params.h);
+            hdpc.mul_data(manager, &params, x, y.clone());
+            let hdpc_constraint_data_ids: Vec<usize> = y.collect();
 
             hdpc_solve(
                 manager,
@@ -57,7 +50,7 @@ fn hdpc_solve(
     // remains RHS permutation, `lu_solve`, and LDPC substitution below.
     let (p, mut lu) = hdpc.lu_idssh(manager.gf256(), params, ldpc);
 
-    let variable_ids_hdpc: Vec<usize> = manager.data_id_range_of_hdpc_variable();
+    let variable_ids_hdpc: Vec<usize> = manager.data_id_range_of_hdpc_variable().collect();
     for i in 0..params.h {
         manager.move_to(hdpc_ids[p[i]], variable_ids_hdpc[i]);
     }
@@ -66,11 +59,10 @@ fn hdpc_solve(
 
     // Substitute P into L = S_h P + L'
     for (var_col, &var_id) in variable_ids_hdpc.iter().take(params.h).enumerate() {
-        let ids = ldpc.inactive_column(var_col + params.b);
-        let ids = ids
-            .iter()
-            .map(|&id| manager.data_id_of_ldpc_variable(id))
-            .collect::<Vec<_>>();
+        let mut ids = Vec::new();
+        ldpc.for_each_inactive_in_column(var_col + params.b, &mut |check| {
+            ids.push(manager.data_id_of_ldpc_variable(check));
+        });
         manager.broadcast_add_owned(var_id, ids);
     }
 }

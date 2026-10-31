@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Shenghao Yang. All rights reserved.
-// Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
+// Licensed under the MIT License. See LICENSE for details.
 
 /// Maximum number of inactive vectors allowed in the system.
 pub const MAX_INACTIVE_NUM: usize = 100; // Adjust this value as needed
@@ -211,6 +211,13 @@ pub enum Operation {
         /// ID of the vector to zero.
         id: usize,
     },
+    /// Zero out consecutive vectors in the half-open range `[start, end)`.
+    EnsureZeroRange {
+        /// First vector ID (inclusive).
+        start: usize,
+        /// One past the last vector ID (exclusive).
+        end: usize,
+    },
     /// Multiply a vector element-wise by the primitive element alpha in GF(256).
     MultiplyAlpha {
         /// ID of the vector to multiply.
@@ -277,12 +284,30 @@ pub enum Operation {
         /// ID of the destination vector.
         target_id: usize,
     },
+    /// Move `count` consecutive vectors starting at `src_start` to `dst_start`.
+    MoveToN {
+        /// First source vector ID.
+        src_start: usize,
+        /// First destination vector ID.
+        dst_start: usize,
+        /// Number of vectors to move.
+        count: usize,
+    },
     /// Copy a vector from `src_id` to `target_id`, keeping the source intact.
     CopyTo {
         /// ID of the source vector.
         src_id: usize,
         /// ID of the destination vector.
         target_id: usize,
+    },
+    /// Copy `count` consecutive vectors starting at `src_start` to `dst_start`.
+    CopyToN {
+        /// First source vector ID.
+        src_start: usize,
+        /// First destination vector ID.
+        dst_start: usize,
+        /// Number of vectors to copy.
+        count: usize,
     },
     /// Remove (deallocate) a vector.
     Remove {

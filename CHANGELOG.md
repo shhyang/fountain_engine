@@ -2,6 +2,36 @@
 
 All notable changes to the published `fountain_engine` crate are documented here.
 
+## [2.1.0] - 2026-10-31
+
+### Added
+
+- **`Operation` N/range variants:** `EnsureZeroRange`, `CopyToN`, `MoveToN`.
+- **`DataManager` helpers:** `ensure_zero_range`, `copy_to_n`, `move_to_n`, `temp_data_ids`.
+- **`DataOperator` direct methods** for the above (defaults route through `execute`).
+- **LDPC `for_each_*` enumerators** (`for_each_active`, `for_each_inactive`, and
+  `*_in_column` / `*_in_row`). Defaults bridge to the existing `active_*` /
+  `inactive_*` `Vec` APIs so 2.0.x implementors keep compiling.
+- **HDPC streamed helpers:** `mul_binary_streamed`, `mul_binary_words`,
+  `mul_binary_supports` (defaults expand to the older row APIs).
+
+### Changed
+
+- **`data_id_range_of_*`:** return `Range<usize>` instead of `Vec<usize>` (same IDs, no allocation).
+- **`HDPC::mul_data`:** takes contiguous `Range<usize>` spans for `x` / `y` instead of `&[usize]` slices.
+- Default LDPC `encode` and ordinary precode / inactivation HDPC append paths use the range APIs.
+
+### License
+
+- Remains **MIT** (relicensed in 2.0.2).
+
+## [2.0.2] - 2026-10-31
+
+### Changed
+
+- **License:** switched from AGPL-3.0 / commercial dual licensing to **MIT**.
+  `LICENSE-AGPL` and `LICENSE-COMMERCIAL` are removed; the package is MIT-only.
+
 ## [2.0.1] - 2026-07-18
 
 ### Fixed

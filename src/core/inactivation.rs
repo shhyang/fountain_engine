@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Shenghao Yang. All rights reserved.
-// Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
+// Licensed under the MIT License. See LICENSE for details.
 
 use crate::algebra::linear_algebra::Matrix;
 use crate::core::binary_matrix::BinaryMatrix;
@@ -139,18 +139,10 @@ impl InactiveSystem {
         tilde_g_rows: &[Vec<u8>],
         manager: &mut DataManager,
     ) {
-        let mut hdpc_constraint_data_ids = Vec::with_capacity(self.params.h);
-        for _ in 0..self.params.h {
-            hdpc_constraint_data_ids.push(manager.temp_data_id());
-        }
-        let variable_ids_active: Vec<usize> = manager.data_id_range_of_active_variable();
-        hdpc.mul_data(
-            manager,
-            &self.params,
-            &variable_ids_active,
-            &hdpc_constraint_data_ids,
-        );
-        self.rhs_data_ids.append(&mut hdpc_constraint_data_ids);
+        let x = manager.data_id_range_of_active_variable();
+        let y = manager.temp_data_ids(self.params.h);
+        hdpc.mul_data(manager, &self.params, x, y.clone());
+        self.rhs_data_ids.extend(y);
 
         let mut matrix_d = hdpc.mul_binary_from_rows(manager.gf256(), &self.params, tilde_g_rows);
 
@@ -169,18 +161,10 @@ impl InactiveSystem {
         tilde_g: &BinaryMatrix,
         manager: &mut DataManager,
     ) {
-        let mut hdpc_constraint_data_ids = Vec::with_capacity(self.params.h);
-        for _ in 0..self.params.h {
-            hdpc_constraint_data_ids.push(manager.temp_data_id());
-        }
-        let variable_ids_active: Vec<usize> = manager.data_id_range_of_active_variable();
-        hdpc.mul_data(
-            manager,
-            &self.params,
-            &variable_ids_active,
-            &hdpc_constraint_data_ids,
-        );
-        self.rhs_data_ids.append(&mut hdpc_constraint_data_ids);
+        let x = manager.data_id_range_of_active_variable();
+        let y = manager.temp_data_ids(self.params.h);
+        hdpc.mul_data(manager, &self.params, x, y.clone());
+        self.rhs_data_ids.extend(y);
 
         let mut matrix_d =
             hdpc.mul_binary_packed(manager.gf256(), &self.params, self.num_inactive, tilde_g);

@@ -16,6 +16,13 @@ The engine is data-free by design. Instead of operating on data directly, the en
 - I/O logging (`IoDataOperator` in `fountain_utility`)
 - Network streaming or any custom backend
 
+## What's new in 2.1
+
+- `Operation::{EnsureZeroRange, CopyToN, MoveToN}` plus matching `DataManager` / `DataOperator` helpers
+- LDPC `for_each_*` streaming enumerators (Vec adjacency APIs still work)
+- HDPC `mul_binary_streamed` / `mul_binary_words` / `mul_binary_supports`; `mul_data` takes contiguous ID ranges
+- MIT license (from 2.0.2)
+
 ## Solver
 
 Encoding and decoding use `SystemSolver`: belief propagation, inactivation, and Gaussian elimination over a sparse master-system representation. This is the only solver in the published 2.x crate.
@@ -26,14 +33,15 @@ Profiling / timing introspection and staging solver experiments are monorepo dev
 
 ```toml
 [dependencies]
-fountain_engine = "2.0.1"
+fountain_engine = "2.1.0"
 ```
 
 ## License
 
-This crate is dual-licensed:
+MIT License. See [LICENSE](LICENSE).
 
-1. **AGPL-3.0** — Free for open-source use. See [LICENSE-AGPL](LICENSE-AGPL).
-2. **Commercial** — For proprietary use without AGPL obligations. See [LICENSE-COMMERCIAL](LICENSE-COMMERCIAL).
+AI / machine-learning training on this code requires a separate license
+from the copyright holder; see [NOTICE](NOTICE). That notice does not
+change the MIT grant for ordinary use, modification, and redistribution.
 
-Copyright (c) 2025 Shenghao Yang. All rights reserved.
+Copyright (c) 2025, 2026 Shenghao Yang.

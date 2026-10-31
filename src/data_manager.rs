@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Shenghao Yang. All rights reserved.
-// Licensed under AGPL-3.0 or commercial license. See LICENSE for details.
+// Licensed under the MIT License. See LICENSE for details.
 
 use crate::traits::DataOperator;
 //se crate::data_operators::VecDataOperater;
@@ -253,6 +253,21 @@ impl DataManager {
         data_id
     }
 
+    /// Allocate `count` consecutive zero-initialized temporary data IDs.
+    ///
+    /// Returns the half-open range `[start, start + count)`. Prefer this over a loop of
+    /// [`temp_data_id`](Self::temp_data_id) when the IDs will be passed as a contiguous span
+    /// (e.g. HDPC `mul_data` outputs).
+    pub fn temp_data_ids(&mut self, count: usize) -> std::ops::Range<usize> {
+        let start = self.next_data_id;
+        self.next_data_id += count;
+        let range = start..start + count;
+        if count > 0 {
+            self.ensure_zero_range(range.clone());
+        }
+        range
+    }
+
     /// Looks up the data vector ID for a previously inserted coded vector, if any.
     pub fn data_id_of_coded_vector(&self, coded_id: usize) -> Option<usize> {
         self.coded_id_to_data_id.get(&coded_id).cloned()
@@ -279,29 +294,34 @@ impl DataManager {
         var_id + self.variable_data_id_0
     }
 
-    /// Returns data IDs for all active variable vectors (source active + LDPC).
-    pub fn data_id_range_of_active_variable(&self) -> Vec<usize> {
-        (self.variable_data_id_0..self.variable_data_id_0 + self.params.num_active()).collect()
+    /// Returns the half-open data-ID range for all active variable vectors (source active + LDPC).
+    ///
+    /// **2.1:** returns [`Range`](std::ops::Range) instead of `Vec<usize>` (same IDs, no allocation).
+    pub fn data_id_range_of_active_variable(&self) -> std::ops::Range<usize> {
+        self.variable_data_id_0..self.variable_data_id_0 + self.params.num_active()
     }
 
-    /// Returns data IDs for all message and LDPC variable vectors.
-    pub fn data_id_range_of_msg_ldpc_variable(&self) -> Vec<usize> {
-        (self.variable_data_id_0..self.variable_data_id_0 + self.params.num_message_ldpc())
-            .collect()
+    /// Returns the half-open data-ID range for all message and LDPC variable vectors.
+    ///
+    /// **2.1:** returns [`Range`](std::ops::Range) instead of `Vec<usize>`.
+    pub fn data_id_range_of_msg_ldpc_variable(&self) -> std::ops::Range<usize> {
+        self.variable_data_id_0..self.variable_data_id_0 + self.params.num_message_ldpc()
     }
 
-    /// Returns data IDs for all LDPC variable vectors.
-    pub fn data_id_range_of_ldpc_variable(&self) -> Vec<usize> {
-        (self.variable_data_id_0 + self.params.a
-            ..self.variable_data_id_0 + self.params.a + self.params.l)
-            .collect()
+    /// Returns the half-open data-ID range for all LDPC variable vectors.
+    ///
+    /// **2.1:** returns [`Range`](std::ops::Range) instead of `Vec<usize>`.
+    pub fn data_id_range_of_ldpc_variable(&self) -> std::ops::Range<usize> {
+        self.variable_data_id_0 + self.params.a
+            ..self.variable_data_id_0 + self.params.a + self.params.l
     }
 
-    /// Returns data IDs for all HDPC variable vectors.
-    pub fn data_id_range_of_hdpc_variable(&self) -> Vec<usize> {
-        (self.variable_data_id_0 + self.params.num_message_ldpc()
-            ..self.variable_data_id_0 + self.params.num_total())
-            .collect()
+    /// Returns the half-open data-ID range for all HDPC variable vectors.
+    ///
+    /// **2.1:** returns [`Range`](std::ops::Range) instead of `Vec<usize>`.
+    pub fn data_id_range_of_hdpc_variable(&self) -> std::ops::Range<usize> {
+        self.variable_data_id_0 + self.params.num_message_ldpc()
+            ..self.variable_data_id_0 + self.params.num_total()
     }
 
     /// Returns the data vector ID for the active variable at the given index.
@@ -431,7 +451,9 @@ impl DataManager {
 
     /// Records an [`Operation::EnsureZero`] to zero the given vectors.
     ///
-    /// Prefer [`Self::ensure_zero_one`] when zeroing a single vector to avoid cloning.
+    /// Prefer [`Self::ensure_zero_one`] when zeroing a single vector, or
+    /// [`Self::ensure_zero_range`] when IDs form a contiguous range.
+    #[deprecated(note = "use ensure_zero_range or ensure_zero_one")]
     pub fn ensure_zero(&mut self, list_id: &[usize]) {
         self.save_operation(Operation::EnsureZero {
             list_id: list_id.to_vec(),
@@ -441,6 +463,23 @@ impl DataManager {
     /// Records an [`Operation::EnsureZeroOne`] to zero a single vector (no `Vec` allocation).
     pub fn ensure_zero_one(&mut self, id: usize) {
         self.save_operation(Operation::EnsureZeroOne { id });
+    }
+
+    /// Records an [`Operation::EnsureZeroRange`] over consecutive IDs `[range.start, range.end)`.
+    ///
+    /// Prefer over building a slice manually when the IDs form a contiguous range.
+    /// Delegates to [`ensure_zero_one`](Self::ensure_zero_one) when `range.len() == 1`.
+    /// No-op when the range is empty.
+    pub fn ensure_zero_range(&mut self, range: std::ops::Range<usize>) {
+        if range.is_empty() {
+            return;
+        } else if range.len() == 1 {
+            return self.ensure_zero_one(range.start);
+        }
+        self.save_operation(Operation::EnsureZeroRange {
+            start: range.start,
+            end: range.end,
+        });
     }
 
     /// Records an [`Operation::MultiplyAlpha`] to multiply a vector by the primitive element.
@@ -569,12 +608,46 @@ impl DataManager {
         self.save_operation(Operation::MoveTo { src_id, target_id });
     }
 
+    /// Bulk move: move `count` consecutive source vectors starting at `src_start`
+    /// to the corresponding destination vectors starting at `dst_start`.
+    ///
+    /// Records a single [`Operation::MoveToN`] when operation logging is enabled.
+    pub fn move_to_n(&mut self, src_start: usize, dst_start: usize, count: usize) {
+        if count == 0 {
+            return;
+        } else if count == 1 {
+            return self.move_to(src_start, dst_start);
+        }
+        self.save_operation(Operation::MoveToN {
+            src_start,
+            dst_start,
+            count,
+        });
+    }
+
     /// Copies a vector from `src_id` to `target_id`. No-op if they are equal.
     pub fn copy_to(&mut self, src_id: usize, target_id: usize) {
         if src_id == target_id {
             return;
         }
         self.save_operation(Operation::CopyTo { src_id, target_id });
+    }
+
+    /// Bulk copy: copy `count` consecutive source vectors starting at `src_start`
+    /// to the corresponding destination vectors starting at `dst_start`.
+    ///
+    /// Records a single [`Operation::CopyToN`] when operation logging is enabled.
+    pub fn copy_to_n(&mut self, src_start: usize, dst_start: usize, count: usize) {
+        if count == 0 {
+            return;
+        } else if count == 1 {
+            return self.copy_to(src_start, dst_start);
+        }
+        self.save_operation(Operation::CopyToN {
+            src_start,
+            dst_start,
+            count,
+        });
     }
 
     /// Records a [`Operation::Remove`] to deallocate a vector.
@@ -616,14 +689,15 @@ impl DataManager {
     /// occupy the tail of the active message range before precoding, then move inactive
     /// message vectors into inactive variable slots.
     pub fn prepare_for_ordinary(&mut self) {
-        for i in 1..=self.params.b {
-            self.move_to(
-                self.num_source - i,
-                self.data_id_of_inactive_variable(self.params.b - i),
+        if self.params.b > 0 {
+            self.move_to_n(
+                self.num_source - self.params.b,
+                self.data_id_of_inactive_variable(0),
+                self.params.b,
             );
         }
         if self.has_padding() {
-            self.ensure_zero(&(self.num_source - self.params.b..self.params.a).collect::<Vec<_>>());
+            self.ensure_zero_range(self.num_source - self.params.b..self.params.a);
         }
         // move the inactive message vectors to the inactive message variable data vectors
         //for i in (self.params.a..self.params.k).rev() {
@@ -644,8 +718,8 @@ impl DataManager {
     pub fn restore_for_ordinary(&mut self) {
         //if self.params.p == 0 {
         let num_a = self.params.a - self.num_padding();
-        for i in 0..self.params.b {
-            self.move_to(self.data_id_of_inactive_variable(i), i + num_a);
+        if self.params.b > 0 {
+            self.move_to_n(self.data_id_of_inactive_variable(0), num_a, self.params.b);
         }
         //} else if self.padding_config == PaddingConfig::AtEnd {
         //     if self.params.p < self.params.b {
